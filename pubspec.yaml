@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.12.2
+  sdk: ^3.9.2
 
 dependencies:
   flutter:
@@ -20,8 +20,8 @@ dependencies:
   flutter_web_auth_2: ^4.1.0
   geolocator: ^14.0.2
   flutter_compass: ^0.8.1
-  webview_flutter: ^4.14.1
-  webview_flutter_android: ^4.13.0
+  webview_flutter: ^4.12.0
+  webview_flutter_android: ^4.12.0
   adhan_dart: ^2.0.1
   hijri: ^3.0.1
 
