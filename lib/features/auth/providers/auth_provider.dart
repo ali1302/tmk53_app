@@ -13,6 +13,8 @@ class AuthProvider extends ChangeNotifier {
   static const _itsKey = 'tmk_its_id';
   static const _nameKey = 'tmk_user_name';
   static const _canScanKey = 'tmk_can_scan';
+  static const _izanLabelKey = 'tmk_izan_label';
+  static const _izanHeadingKey = 'tmk_izan_heading';
 
   final AuthRepository _repository;
 
@@ -24,6 +26,8 @@ class AuthProvider extends ChangeNotifier {
   String? errorMessage;
   bool isDesignPreview = false;
   bool canScan = false;
+  String izanLabel = 'Izan';
+  String izanHeading = 'Registration for Jaman Izan';
 
   bool get isAuthenticated =>
       token != null &&
@@ -37,6 +41,14 @@ class AuthProvider extends ChangeNotifier {
       itsId = prefs.getString(_itsKey);
       userName = prefs.getString(_nameKey);
       canScan = prefs.getBool(_canScanKey) ?? false;
+      final savedIzan = prefs.getString(_izanLabelKey)?.trim();
+      final savedHeading = prefs.getString(_izanHeadingKey)?.trim();
+      if (savedIzan != null && savedIzan.isNotEmpty) {
+        izanLabel = savedIzan;
+      }
+      if (savedHeading != null && savedHeading.isNotEmpty) {
+        izanHeading = savedHeading;
+      }
       isDesignPreview = token == 'design-preview';
       if (isDesignPreview) {
         canScan = true;
@@ -108,12 +120,16 @@ class AuthProvider extends ChangeNotifier {
     itsId = null;
     userName = null;
     canScan = false;
+    izanLabel = 'Izan';
+    izanHeading = 'Registration for Jaman Izan';
     isDesignPreview = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
     await prefs.remove(_itsKey);
     await prefs.remove(_nameKey);
     await prefs.remove(_canScanKey);
+    await prefs.remove(_izanLabelKey);
+    await prefs.remove(_izanHeadingKey);
     notifyListeners();
   }
 
@@ -135,6 +151,12 @@ class AuthProvider extends ChangeNotifier {
       userName = home.user.itsName;
     }
     canScan = home.canScan;
+    if (home.izanLabel.trim().isNotEmpty) {
+      izanLabel = home.izanLabel.trim();
+    }
+    if (home.izanHeading.trim().isNotEmpty) {
+      izanHeading = home.izanHeading.trim();
+    }
     _persistProfile();
     notifyListeners();
   }
@@ -151,5 +173,7 @@ class AuthProvider extends ChangeNotifier {
     if (itsId != null) await prefs.setString(_itsKey, itsId!);
     if (userName != null) await prefs.setString(_nameKey, userName!);
     await prefs.setBool(_canScanKey, canScan);
+    await prefs.setString(_izanLabelKey, izanLabel);
+    await prefs.setString(_izanHeadingKey, izanHeading);
   }
 }

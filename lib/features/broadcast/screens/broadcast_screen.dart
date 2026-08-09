@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/broadcast_provider.dart';
+import '../widgets/broadcast_detail_sheet.dart';
 
 class BroadcastScreen extends StatefulWidget {
   const BroadcastScreen({super.key, required this.onBack});
@@ -60,12 +60,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                               itemBuilder: (context, index) {
                                 final item = provider.items[index];
                                 return InkWell(
-                                  onTap: item.file == null || item.file!.isEmpty
-                                      ? null
-                                      : () => launchUrl(
-                                            Uri.parse(item.file!),
-                                            mode: LaunchMode.externalApplication,
-                                          ),
+                                  onTap: () => showBroadcastDetailSheet(context, item),
                                   child: Padding(
                                     padding: const EdgeInsets.all(16),
                                     child: Column(
@@ -105,7 +100,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                                                           fontWeight: FontWeight.w600,
                                                         ),
                                                       ),
-                                                      if (index < 3) ...[
+                                                      if (!provider.isRead(item.id)) ...[
                                                         const SizedBox(width: 8),
                                                         Container(
                                                           padding: const EdgeInsets.symmetric(
@@ -139,6 +134,12 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                                                 ],
                                               ),
                                             ),
+                                            if (item.isPdf)
+                                              const Icon(Icons.picture_as_pdf, color: Color(0xFFB91C1C), size: 22)
+                                            else if (item.isImage)
+                                              const Icon(Icons.image_outlined, color: AppColors.gray400, size: 22)
+                                            else if (item.isVideo)
+                                              const Icon(Icons.play_circle_outline, color: AppColors.gray400, size: 22),
                                           ],
                                         ),
                                         const SizedBox(height: 10),
@@ -150,6 +151,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                                             height: 1.4,
                                           ),
                                         ),
+                                        if (item.hasMedia) ...[
+                                          const SizedBox(height: 10),
+                                          BroadcastMediaView(item: item, compact: true),
+                                        ],
                                       ],
                                     ),
                                   ),

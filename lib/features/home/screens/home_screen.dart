@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/calendar/misri_calendar.dart';
 import '../../../core/models/app_models.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/sun_times_service.dart';
@@ -11,6 +12,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../../core/widgets/kaaba_icon.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../broadcast/providers/broadcast_provider.dart';
+import '../../broadcast/widgets/broadcast_detail_sheet.dart';
 import '../providers/home_provider.dart';
 import '../widgets/sun_times_bar.dart';
 
@@ -19,10 +22,12 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.onOpenQr,
     this.onOpenQibla,
+    this.onOpenBroadcast,
   });
 
   final VoidCallback onOpenQr;
   final ValueChanged<String>? onOpenQibla;
+  final VoidCallback? onOpenBroadcast;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -69,8 +74,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final lon = prefs.getDouble(_lonCacheKey);
     if (mounted) {
       setState(() {
-        if (cached != null && cached.trim().isNotEmpty) {
+        if (cached != null &&
+            cached.trim().isNotEmpty &&
+            !LocationService.isArabicLabel(cached)) {
           _geoLocation = cached.trim();
+        } else if (cached != null && LocationService.isArabicLabel(cached)) {
+          // Drop stale Arabic cache so English reverse-geocode can replace it.
+          prefs.remove(_locationCacheKey);
         }
         if (lat != null && lon != null) {
           _sunTimes = _sunTimesService.forCoordinates(
@@ -163,7 +173,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final home = context.watch<HomeProvider>();
     final details = home.details;
     final dateParts = _parseEnDate(details?.enDate);
-    final hijriDisplay = _formatHijri(_parseHijriDate(details?.hijriDate));
+    // Use local Misri (Fatimid) calendar — do not rely on API Kuwaiti/Umm date.
+    final hijriDisplay = _formatMisriDate(DateTime.now());
 
     return Column(
       children: [
@@ -325,14 +336,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                   customBorder: const CircleBorder(),
                                   onTap: widget.onOpenQibla == null ? null : _openQibla,
                                   child: const SizedBox(
-                                    width: 34,
-                                    height: 34,
+                                    width: 36,
+                                    height: 36,
                                     child: Center(
-                                      child: KaabaIcon(
-                                        size: 18,
-                                        color: Color(0xFF2A0E24),
-                                        accentColor: Colors.white,
-                                      ),
+                                      child: KaabaIcon(size: 28),
                                     ),
                                   ),
                                 ),
@@ -397,7 +404,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               const SizedBox(height: 2),
                               Text(
                                 [
-                                  details.majlis!.hijriDate,
+                                  details.majlis!.misriDateLabel,
                                   details.majlis!.date,
                                 ].where((e) => e.isNotEmpty).join(' · '),
                                 style: const TextStyle(fontSize: 12, color: AppColors.gray500),
@@ -412,7 +419,20 @@ class _HomeScreenState extends State<HomeScreen> {
                                 'No notifications.',
                                 style: TextStyle(fontSize: 14, color: AppColors.gray500),
                               )
-                            : _NotifyBlock(item: details!.notify!),
+                            : Builder(
+                                builder: (context) {
+                                  final notify = details!.notify!;
+                                  final isNew =
+                                      !context.watch<BroadcastProvider>().isRead(notify.id);
+                                  return InkWell(
+                                    onTap: () async {
+                                      await showBroadcastDetailSheet(context, notify);
+                                      widget.onOpenBroadcast?.call();
+                                    },
+                                    child: _NotifyBlock(item: notify, showNew: isNew),
+                                  );
+                                },
+                              ),
                       ),
                       const SizedBox(height: 16),
                     ],
@@ -423,114 +443,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// API format: "7, Safar, 1448H"
-  _HijriParts _parseHijriDate(String? hijri) {
-    if (hijri == null || hijri.trim().isEmpty) {
-      return const _HijriParts(day: '', monthEn: '', year: '');
-    }
+  static const _misriMonthsAr = [
+    'محرم الحرام',
+    'صفر',
+    'ربيع الأول',
+    'ربيع الثاني',
+    'جمادى الأولى',
+    'جمادى الآخرة',
+    'رجب',
+    'شعبان',
+    'رمضان',
+    'شوال',
+    'ذو القعدة',
+    'ذو الحجة',
+  ];
 
-    final cleaned = hijri.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final parts = cleaned.split(RegExp(r'\s*,\s*'));
-
-    String day = '';
-    String month = '';
-    String year = '';
-
-    if (parts.length >= 3) {
-      // "7, Safar, 1448H"
-      day = parts[0].replaceAll(RegExp(r'\D'), '');
-      month = parts[1].trim();
-      year = parts[2].replaceAll(RegExp(r'[^0-9]'), '');
-    } else {
-      final dayMatch = RegExp(r'(\d{1,2})').firstMatch(cleaned);
-      final yearMatch = RegExp(r'(\d{3,4})\s*H?', caseSensitive: false).firstMatch(cleaned);
-      day = dayMatch?.group(1) ?? '';
-      year = yearMatch?.group(1) ?? '';
-      month = cleaned
-          .replaceAll(RegExp(r'\d'), '')
-          .replaceAll(RegExp(r'[Hh,]'), '')
-          .trim();
-    }
-
-    return _HijriParts(day: day, monthEn: month, year: year);
-  }
-
-  _HijriDisplay _formatHijri(_HijriParts parts) {
-    if (parts.day.isEmpty && parts.monthEn.isEmpty && parts.year.isEmpty) {
-      return const _HijriDisplay(dayArabic: '—', monthYearArabic: '—');
-    }
-
-    final monthAr = _hijriMonthToArabic(parts.monthEn);
-    final yearAr = _toArabicDigits(parts.year.isEmpty ? '' : '${parts.year}هـ');
-    final dayAr = _toArabicDigits(parts.day.isEmpty ? '—' : parts.day);
-
-    // Subtitle: month + year only (no day — day is the large number above).
-    final monthYear = [
-      if (monthAr.isNotEmpty) monthAr,
-      if (yearAr.isNotEmpty) yearAr,
-    ].join(' ');
-
+  _HijriDisplay _formatMisriDate(DateTime date) {
+    final misri = MisriDate.fromGregorian(date);
+    final monthAr = _misriMonthsAr[misri.month - 1];
+    final yearAr = _toArabicDigits('${misri.year}هـ');
     return _HijriDisplay(
-      dayArabic: dayAr,
-      monthYearArabic: monthYear.isEmpty ? '—' : monthYear,
+      dayArabic: _toArabicDigits('${misri.day}'),
+      monthYearArabic: '$monthAr $yearAr',
     );
-  }
-
-  String _hijriMonthToArabic(String month) {
-    final key = month.toLowerCase().replaceAll(RegExp(r'[^a-z\u0600-\u06ff]'), '');
-    if (key.isEmpty) return month;
-
-    // Already Arabic
-    if (RegExp(r'[\u0600-\u06FF]').hasMatch(month)) {
-      return month.trim();
-    }
-
-    const map = <String, String>{
-      'muharram': 'محرم الحرام',
-      'mouharrem': 'محرم الحرام',
-      'moharram': 'محرم الحرام',
-      'moharramulharam': 'محرم الحرام',
-      'safar': 'صفر',
-      'rabiealawwal': 'ربيع الأول',
-      'rabialawwal': 'ربيع الأول',
-      'rabialawal': 'ربيع الأول',
-      'rabiealakher': 'ربيع الثاني',
-      'rabiulaakhar': 'ربيع الثاني',
-      'rabialakhir': 'ربيع الثاني',
-      'rabialakher': 'ربيع الثاني',
-      'jumadilawwal': 'جمادى الأولى',
-      'jumadilula': 'جمادى الأولى',
-      'jumadaawwal': 'جمادى الأولى',
-      'jumadilakhir': 'جمادى الآخرة',
-      'jumadilaakhar': 'جمادى الآخرة',
-      'jumadaakhir': 'جمادى الآخرة',
-      'rajab': 'رجب',
-      'rajabulasab': 'رجب',
-      'chaban': 'شعبان',
-      'shaban': 'شعبان',
-      'shaaban': 'شعبان',
-      'shabanalkarim': 'شعبان',
-      'ramadan': 'رمضان',
-      'ramadhan': 'رمضان',
-      'chawwal': 'شوال',
-      'shawwal': 'شوال',
-      'shawwalulmukarram': 'شوال',
-      'dhoulqida': 'ذو القعدة',
-      'dhulqadah': 'ذو القعدة',
-      'zulqada': 'ذو القعدة',
-      'zilqadatilharam': 'ذو القعدة',
-      'dhoulhijja': 'ذو الحجة',
-      'dhulhijjah': 'ذو الحجة',
-      'zulhijjah': 'ذو الحجة',
-      'zilhijjatilharam': 'ذو الحجة',
-    };
-
-    for (final entry in map.entries) {
-      if (key.contains(entry.key) || entry.key.contains(key)) {
-        return entry.value;
-      }
-    }
-    return month.trim();
   }
 
   String _toArabicDigits(String input) {
@@ -588,17 +523,6 @@ class _DateParts {
   final String monthYear;
 }
 
-class _HijriParts {
-  const _HijriParts({
-    required this.day,
-    required this.monthEn,
-    required this.year,
-  });
-  final String day;
-  final String monthEn;
-  final String year;
-}
-
 class _HijriDisplay {
   const _HijriDisplay({
     required this.dayArabic,
@@ -609,8 +533,9 @@ class _HijriDisplay {
 }
 
 class _NotifyBlock extends StatelessWidget {
-  const _NotifyBlock({required this.item});
+  const _NotifyBlock({required this.item, this.showNew = true});
   final BroadcastItem item;
+  final bool showNew;
 
   @override
   Widget build(BuildContext context) {
@@ -636,14 +561,16 @@ class _NotifyBlock extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  Text(
+                  const Text(
                     'TMK Broadcast',
                     style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
                   ),
-                  SizedBox(width: 8),
-                  _NewBadge(),
+                  if (showNew) ...[
+                    const SizedBox(width: 8),
+                    const _NewBadge(),
+                  ],
                 ],
               ),
               const SizedBox(height: 2),
@@ -653,6 +580,10 @@ class _NotifyBlock extends StatelessWidget {
                 item.displayBody,
                 style: const TextStyle(fontSize: 12, color: Color(0xFF374151), height: 1.4),
               ),
+              if (item.hasMedia) ...[
+                const SizedBox(height: 8),
+                BroadcastMediaView(item: item, compact: true),
+              ],
             ],
           ),
         ),

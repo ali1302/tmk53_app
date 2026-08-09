@@ -23,7 +23,7 @@ dependencies:
   webview_flutter: ^4.12.0
   webview_flutter_android: ^4.12.0
   adhan_dart: ^2.0.1
-  hijri: ^3.0.1
+  audioplayers: ^6.5.0
 
 dev_dependencies:
   flutter_test:
@@ -37,13 +37,18 @@ flutter:
     - assets/images/tmk_logo.png
     - assets/images/tmk_crest.png
     - assets/images/app_icon.png
+    - assets/images/app_icon_foreground.png
+    - assets/images/kaaba_3d.png
+    - assets/sounds/scan_success.wav
 
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/images/app_icon.png
-  adaptive_icon_background: "#3D1035"
-  adaptive_icon_foreground: assets/images/app_icon.png
+  remove_alpha_ios: true
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/images/app_icon_foreground.png
+  adaptive_icon_foreground_inset: 0
   web:
     generate: true
     image_path: assets/images/app_icon.png
@@ -52,6 +57,7 @@ flutter_launcher_icons:
   windows:
     generate: true
     image_path: assets/images/app_icon.png
+    icon_size: 256
   macos:
     generate: true
     image_path: assets/images/app_icon.png

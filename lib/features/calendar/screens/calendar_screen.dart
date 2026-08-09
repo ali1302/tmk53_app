@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:hijri/hijri_calendar.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/calendar/misri_calendar.dart';
+import '../../../core/services/sun_times_service.dart';
 import '../../../core/theme/app_theme.dart';
 
 class CalendarScreen extends StatefulWidget {
@@ -30,22 +32,65 @@ class _CalendarScreenState extends State<CalendarScreen> {
     'Zilhijjah',
   ];
 
-  late HijriCalendar _hijriMonth;
+  static const _latCacheKey = 'tmk_user_geo_lat';
+  static const _lonCacheKey = 'tmk_user_geo_lon';
+  // TMK Kuwait fallback when GPS not available yet.
+  static const _kuwaitLat = 29.3759;
+  static const _kuwaitLon = 47.9774;
+
+  final _sunTimesService = SunTimesService();
+
+  late MisriDate _hijriMonth;
   DateTime? _selected;
+  double _latitude = _kuwaitLat;
+  double _longitude = _kuwaitLon;
+  SunTimes? _sunTimes;
 
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _selected = DateTime(now.year, now.month, now.day);
-    _hijriMonth = HijriCalendar.fromDate(now);
-    _hijriMonth.hDay = 1;
+    final todayMisri = MisriDate.fromGregorian(now);
+    _hijriMonth = MisriDate(todayMisri.year, todayMisri.month, 1);
+    _sunTimes = _computeSunTimes();
+    _loadCachedCoordinates();
+  }
+
+  Future<void> _loadCachedCoordinates() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lat = prefs.getDouble(_latCacheKey);
+    final lon = prefs.getDouble(_lonCacheKey);
+    if (!mounted) return;
+    if (lat != null && lon != null) {
+      setState(() {
+        _latitude = lat;
+        _longitude = lon;
+        _sunTimes = _computeSunTimes();
+      });
+    }
+  }
+
+  SunTimes? _computeSunTimes() {
+    final day = _selected ?? DateTime.now();
+    return _sunTimesService.forCoordinates(
+      latitude: _latitude,
+      longitude: _longitude,
+      date: day,
+    );
+  }
+
+  void _selectDate(DateTime date) {
+    setState(() {
+      _selected = date;
+      _sunTimes = _computeSunTimes();
+    });
   }
 
   void _shiftMonth(int delta) {
     setState(() {
-      var year = _hijriMonth.hYear;
-      var month = _hijriMonth.hMonth + delta;
+      var year = _hijriMonth.year;
+      var month = _hijriMonth.month + delta;
       while (month < 1) {
         month += 12;
         year -= 1;
@@ -54,23 +99,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
         month -= 12;
         year += 1;
       }
-      _hijriMonth = HijriCalendar()
-        ..hYear = year
-        ..hMonth = month
-        ..hDay = 1;
+      _hijriMonth = MisriDate(year, month, 1);
     });
   }
 
   DateTime _gregorianForHijriDay(int day) {
-    final h = HijriCalendar()
-      ..hYear = _hijriMonth.hYear
-      ..hMonth = _hijriMonth.hMonth
-      ..hDay = day;
-    return h.hijriToGregorian(h.hYear, h.hMonth, h.hDay);
+    return MisriDate(_hijriMonth.year, _hijriMonth.month, day).toGregorian();
   }
 
   int _lengthOfHijriMonth() {
-    return _hijriMonth.getDaysInMonth(_hijriMonth.hYear, _hijriMonth.hMonth);
+    return MisriDate.daysInMonth(_hijriMonth.year, _hijriMonth.month);
   }
 
   String _toArabicDigits(int n) {
@@ -108,7 +146,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
       cells.add(
         InkWell(
-          onTap: () => setState(() => _selected = date),
+          onTap: () => _selectDate(date),
           child: Container(
             decoration: BoxDecoration(
               color: isSelected && !isToday ? const Color(0xFFFDF6E3) : Colors.white,
@@ -117,19 +155,23 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 width: isToday ? 2 : 1,
               ),
             ),
-            padding: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   gregLabel,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 9, color: AppColors.gray400, height: 1),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   _toArabicDigits(day),
+                  textAlign: TextAlign.center,
                   style: GoogleFonts.notoNaskhArabic(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
                     color: AppColors.hijriGreen,
                     height: 1.1,
                   ),
@@ -149,9 +191,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ));
     }
 
-    final selHijri = _selected == null ? null : HijriCalendar.fromDate(_selected!);
+    final selHijri = _selected == null ? null : MisriDate.fromGregorian(_selected!);
     final monthTitle =
-        '${_hijriMonths[_hijriMonth.hMonth - 1]} - ${_hijriMonth.hYear}';
+        '${_hijriMonths[_hijriMonth.month - 1]} - ${_hijriMonth.year}';
 
     return Material(
       color: Colors.white,
@@ -239,14 +281,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   crossAxisCount: 7,
-                  childAspectRatio: 0.85,
+                  childAspectRatio: 0.75,
                   children: cells,
                 ),
                 if (selHijri != null && _selected != null) ...[
                   const SizedBox(height: 16),
                   Text(
                     '${DateFormat('EEEE').format(_selected!)} , '
-                    '${selHijri.hDay} ${_hijriMonths[selHijri.hMonth - 1]} ${selHijri.hYear}',
+                    '${selHijri.day} ${_hijriMonths[selHijri.month - 1]} ${selHijri.year}',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -268,10 +310,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      _PrayerChip(label: 'Sunrise', time: '—'),
-                      _PrayerChip(label: 'Zawal', time: '—'),
-                      _PrayerChip(label: 'Maghrib', time: '—'),
+                    children: [
+                      _PrayerChip(
+                        label: 'Sunrise',
+                        time: _sunTimes?.sunriseLabel ?? '—',
+                      ),
+                      _PrayerChip(
+                        label: 'Zawal',
+                        time: _sunTimes?.zawalLabel ?? '—',
+                      ),
+                      _PrayerChip(
+                        label: 'Maghrib',
+                        time: _sunTimes?.maghribLabel ?? '—',
+                      ),
                     ],
                   ),
                 ),

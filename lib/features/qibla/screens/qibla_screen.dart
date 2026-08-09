@@ -313,17 +313,18 @@ class _CompassDial extends StatelessWidget {
     final dialRotation =
         deviceHeading != null ? -deviceHeading! * math.pi / 180 : 0.0;
     final kaabaAngle = qiblaBearing * math.pi / 180;
+    final arrowColor = aligned ? AppColors.success : AppColors.primary;
 
     return SizedBox(
-      width: 260,
-      height: 260,
+      width: 280,
+      height: 280,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Fixed top indicator (device facing direction)
+          // Fixed top indicator — direction the device is facing
           const Positioned(
             top: 0,
-            child: Icon(Icons.arrow_drop_up, size: 36, color: Color(0xFF3D1035)),
+            child: _FacingArrow(),
           ),
           Transform.rotate(
             angle: dialRotation,
@@ -381,45 +382,58 @@ class _CompassDial extends StatelessWidget {
                     size: const Size(236, 236),
                     painter: _TickPainter(),
                   ),
+                  // Qibla direction arrow (needle from center → Kaaba)
+                  Transform.rotate(
+                    angle: kaabaAngle,
+                    child: CustomPaint(
+                      size: const Size(236, 236),
+                      painter: _QiblaArrowPainter(color: arrowColor),
+                    ),
+                  ),
                   // Kaaba marker at qibla bearing
                   Transform.rotate(
                     angle: kaabaAngle,
                     child: Align(
                       alignment: Alignment.topCenter,
                       child: Padding(
-                        padding: const EdgeInsets.only(top: 28),
+                        padding: const EdgeInsets.only(top: 22),
                         child: Transform.rotate(
                           angle: -kaabaAngle,
                           child: Container(
-                            width: 40,
-                            height: 40,
+                            width: 42,
+                            height: 42,
                             decoration: BoxDecoration(
                               color: AppColors.accent,
                               shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.accent.withValues(alpha: 0.35),
+                                  color: AppColors.accent.withValues(alpha: 0.4),
                                   blurRadius: 8,
                                 ),
                               ],
                             ),
                             alignment: Alignment.center,
-                            child: const KaabaIcon(
-                              size: 22,
-                              color: Colors.white,
-                              accentColor: Color(0xFF3D1035),
-                            ),
+                            child: const KaabaIcon(size: 30),
                           ),
                         ),
                       ),
                     ),
                   ),
+                  // Center pivot
                   Container(
-                    width: 10,
-                    height: 10,
+                    width: 14,
+                    height: 14,
                     decoration: BoxDecoration(
-                      color: AppColors.primary,
+                      color: arrowColor,
                       shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 4,
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -429,6 +443,112 @@ class _CompassDial extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Fixed arrow at the top of the dial = phone facing direction.
+class _FacingArrow extends StatelessWidget {
+  const _FacingArrow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CustomPaint(
+          size: const Size(28, 22),
+          painter: _TriangleArrowPainter(color: AppColors.primary),
+        ),
+        Container(
+          width: 3,
+          height: 8,
+          color: AppColors.primary,
+        ),
+      ],
+    );
+  }
+}
+
+class _TriangleArrowPainter extends CustomPainter {
+  _TriangleArrowPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..moveTo(size.width / 2, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _TriangleArrowPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
+}
+
+/// Needle arrow pointing toward Qibla (drawn pointing up; rotate externally).
+class _QiblaArrowPainter extends CustomPainter {
+  _QiblaArrowPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final tipY = 48.0;
+    final shaftTop = 62.0;
+    final shaftBottom = center.dy - 8;
+
+    final fill = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final stroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    // Arrow head
+    final head = Path()
+      ..moveTo(center.dx, tipY)
+      ..lineTo(center.dx + 14, shaftTop + 6)
+      ..lineTo(center.dx - 14, shaftTop + 6)
+      ..close();
+    canvas.drawPath(head, fill);
+    canvas.drawPath(head, stroke);
+
+    // Shaft
+    final shaft = RRect.fromRectAndRadius(
+      Rect.fromLTRB(center.dx - 4.5, shaftTop + 4, center.dx + 4.5, shaftBottom),
+      const Radius.circular(3),
+    );
+    canvas.drawRRect(shaft, fill);
+    canvas.drawRRect(shaft, stroke);
+
+    // Small opposite stub for balance
+    final stub = RRect.fromRectAndRadius(
+      Rect.fromLTRB(center.dx - 3, center.dy + 8, center.dx + 3, center.dy + 36),
+      const Radius.circular(2),
+    );
+    canvas.drawRRect(
+      stub,
+      Paint()
+        ..color = color.withValues(alpha: 0.35)
+        ..style = PaintingStyle.fill,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _QiblaArrowPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 

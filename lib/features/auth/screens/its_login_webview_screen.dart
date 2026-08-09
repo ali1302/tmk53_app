@@ -17,14 +17,28 @@ class ItsLoginWebViewScreen extends StatefulWidget {
 }
 
 class _ItsLoginWebViewScreenState extends State<ItsLoginWebViewScreen> {
-  late final WebViewController _controller;
+  WebViewController? _controller;
   var _loading = true;
   var _completed = false;
   String? _status;
+  var _unsupported = false;
+
+  bool get _isSupportedPlatform {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
 
   @override
   void initState() {
     super.initState();
+    if (!_isSupportedPlatform) {
+      _unsupported = true;
+      _loading = false;
+      _status = 'In-app login is not supported on this platform. Use browser login instead.';
+      return;
+    }
+
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
@@ -74,13 +88,15 @@ class _ItsLoginWebViewScreenState extends State<ItsLoginWebViewScreen> {
       );
 
     _enableAndroidCookies().then((_) {
-      _controller.loadRequest(Uri.parse(widget.loginUrl));
+      _controller?.loadRequest(Uri.parse(widget.loginUrl));
     });
   }
 
   Future<void> _enableAndroidCookies() async {
+    final controller = _controller;
+    if (controller == null) return;
     if (defaultTargetPlatform != TargetPlatform.android) return;
-    final platform = _controller.platform;
+    final platform = controller.platform;
     if (platform is AndroidWebViewController) {
       AndroidWebViewController.enableDebugging(kDebugMode);
       await platform.setMediaPlaybackRequiresUserGesture(false);
@@ -144,6 +160,7 @@ class _ItsLoginWebViewScreenState extends State<ItsLoginWebViewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = _controller;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -155,34 +172,45 @@ class _ItsLoginWebViewScreenState extends State<ItsLoginWebViewScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: Stack(
-        children: [
-          WebViewWidget(controller: _controller),
-          if (_loading)
-            const LinearProgressIndicator(
-              minHeight: 2,
-              color: AppColors.accent,
-              backgroundColor: Color(0xFFF5EFD8),
-            ),
-          if (_status != null)
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 16,
-              child: Material(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(8),
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Text(
-                    _status!,
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
+      body: _unsupported || controller == null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _status ?? 'In-app login is not available on this platform.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, color: Color(0xFF4B5563)),
                 ),
               ),
+            )
+          : Stack(
+              children: [
+                WebViewWidget(controller: controller),
+                if (_loading)
+                  const LinearProgressIndicator(
+                    minHeight: 2,
+                    color: AppColors.accent,
+                    backgroundColor: Color(0xFFF5EFD8),
+                  ),
+                if (_status != null)
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 16,
+                    child: Material(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Text(
+                          _status!,
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-        ],
-      ),
     );
   }
 }

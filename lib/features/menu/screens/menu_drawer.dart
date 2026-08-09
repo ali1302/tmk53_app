@@ -6,6 +6,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/theme_provider.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../feedback/screens/feedback_dialog.dart';
 import '../../home/providers/home_provider.dart';
 
 class MenuDrawer extends StatelessWidget {
@@ -14,11 +15,13 @@ class MenuDrawer extends StatelessWidget {
     required this.onCalendar,
     this.onSelfScan,
     this.onDues,
+    this.onCommittee,
   });
 
   final VoidCallback onCalendar;
   final VoidCallback? onSelfScan;
   final VoidCallback? onDues;
+  final VoidCallback? onCommittee;
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +34,8 @@ class MenuDrawer extends StatelessWidget {
     final its = home?.user.ejamaatId.isNotEmpty == true
         ? home!.user.ejamaatId
         : (auth.itsId ?? '—');
+    final sabeel = home?.user.sabeelNo.trim() ?? '';
+    final itsLine = sabeel.isNotEmpty ? 'ITS: $its  ·  Sabeel: $sabeel' : 'ITS: $its';
 
     return Material(
       color: Colors.white,
@@ -58,10 +63,10 @@ class MenuDrawer extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          its,
+                          itsLine,
                           style: TextStyle(
                             color: AppColors.accent,
-                            fontSize: 14,
+                            fontSize: 13,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -93,8 +98,13 @@ class MenuDrawer extends StatelessWidget {
             ),
             _MenuTile(
               icon: Icons.qr_code_2,
-              label: 'Self Scan',
+              label: 'History Scan',
               onTap: onSelfScan,
+            ),
+            _MenuTile(
+              icon: Icons.groups_outlined,
+              label: 'Jamaat Committee Members',
+              onTap: onCommittee,
             ),
             _MenuTile(
               icon: Icons.public,
@@ -150,7 +160,11 @@ class MenuDrawer extends StatelessWidget {
               ),
             ),
             const Divider(height: 1, color: Color(0xFFF0F0F0)),
-            const _MenuTile(icon: Icons.chat_bubble_outline, label: 'Feedback/Report Error'),
+            _MenuTile(
+              icon: Icons.chat_bubble_outline,
+              label: 'Feedback/Report Error',
+              onTap: () => showFeedbackDialog(context),
+            ),
             _MenuTile(
               icon: Icons.logout,
               label: 'Logout',

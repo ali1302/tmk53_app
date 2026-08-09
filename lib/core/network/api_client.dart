@@ -107,6 +107,13 @@ class ApiClient {
       if (allowPlainText || response.statusCode >= 200 && response.statusCode < 300) {
         return raw;
       }
+      final lower = raw.toLowerCase();
+      if (lower.contains('404') || lower.contains('not found')) {
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: 'Server API is outdated. Please upload the latest PHP API files.',
+        );
+      }
       throw ApiException(
         statusCode: response.statusCode,
         message: raw.length > 120 ? 'Unexpected response from server.' : raw,

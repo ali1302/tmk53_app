@@ -1,3 +1,5 @@
+import '../calendar/misri_calendar.dart';
+
 class JamaatUser {
   const JamaatUser({
     required this.ejamaatId,
@@ -118,16 +120,60 @@ class BroadcastItem {
   }
 
   String get displayBody {
-    final parts = <String>[];
-    if (itsId != null && itsId!.isNotEmpty) {
-      parts.add('ITS ID: $itsId');
-    }
-    if (title.isNotEmpty) parts.add(title);
-    if (appendInfo != null && appendInfo!.trim().isNotEmpty) {
-      parts.add(appendInfo!.trim());
-    }
-    return parts.join('\n');
+    // `title` is the broadcast message text.
+    // `appendInfo` is only a 0/1 flag (append ITS name in push), not UI content.
+    // `its_id` is a targeting field, not part of the message body.
+    return title.trim();
   }
+
+  String? get mediaUrl {
+    final raw = file?.trim();
+    if (raw == null || raw.isEmpty || raw.toLowerCase() == 'null') {
+      return null;
+    }
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
+    }
+    final cleaned = raw.startsWith('/') ? raw.substring(1) : raw;
+    if (cleaned.startsWith('broadcasts/') || cleaned.startsWith('pdf/')) {
+      return 'https://tmk53.com/$cleaned';
+    }
+    return 'https://tmk53.com/broadcasts/$cleaned';
+  }
+
+  bool get isPdf {
+    final t = type.toLowerCase().trim();
+    final url = (mediaUrl ?? file ?? '').toLowerCase();
+    return t == 'pdf' ||
+        url.contains('/pdf/') ||
+        url.endsWith('.pdf') ||
+        url.contains('application/pdf');
+  }
+
+  bool get isImage {
+    if (isPdf || isVideo) return false;
+    final t = type.toLowerCase().trim();
+    final url = (mediaUrl ?? file ?? '').toLowerCase();
+    if (t == 'image' || t == 'photo' || t == 'img') return mediaUrl != null;
+    return url.endsWith('.jpg') ||
+        url.endsWith('.jpeg') ||
+        url.endsWith('.png') ||
+        url.endsWith('.gif') ||
+        url.endsWith('.webp') ||
+        url.endsWith('.bmp');
+  }
+
+  bool get isVideo {
+    final t = type.toLowerCase().trim();
+    final url = (mediaUrl ?? file ?? '').toLowerCase();
+    return t == 'video' ||
+        url.endsWith('.mp4') ||
+        url.endsWith('.mov') ||
+        url.endsWith('.webm') ||
+        url.contains('/live');
+  }
+
+  bool get hasMedia => mediaUrl != null && (isImage || isPdf || isVideo);
 }
 
 class MajlisItem {
@@ -136,26 +182,50 @@ class MajlisItem {
     required this.title,
     this.date = '',
     this.hijriDate = '',
+    this.onlyHof = false,
   });
 
   final String id;
   final String title;
   final String date;
   final String hijriDate;
+  final bool onlyHof;
 
   factory MajlisItem.fromJson(Map<String, dynamic>? json) {
     if (json == null || json.isEmpty) {
       return const MajlisItem(id: '', title: '');
     }
+    final onlyHofRaw = json['only_hof_status'] ?? json['onlyHof'];
     return MajlisItem(
       id: '${json['id'] ?? ''}',
       title: '${json['title'] ?? ''}'.trim(),
       date: '${json['date'] ?? ''}',
       hijriDate: '${json['hijriDate'] ?? ''}',
+      onlyHof: onlyHofRaw == true ||
+          onlyHofRaw == 1 ||
+          '$onlyHofRaw' == '1' ||
+          '$onlyHofRaw' == 'true',
     );
   }
 
   bool get isEmpty => id.isEmpty && title.isEmpty;
+
+  /// Prefer local Misri conversion from Gregorian date (API hijri can be wrong).
+  String get misriDateLabel {
+    final local = MisriDate.labelFromGregorianString(date);
+    if (local != null && local.isNotEmpty) return local;
+    if (_looksLikeValidHijri(hijriDate)) return hijriDate;
+    return '';
+  }
+
+  static bool _looksLikeValidHijri(String value) {
+    final v = value.trim();
+    if (v.isEmpty) return false;
+    // Reject broken values like "2183, 1441" / "2179, ,1441"
+    if (RegExp(r'^\d{3,4}\s*[,.]?\s*\d{3,4}$').hasMatch(v)) return false;
+    if (v.contains(', ,') || v.contains(',,')) return false;
+    return RegExp(r'\d{3,4}').hasMatch(v) && RegExp(r'[A-Za-z\u0600-\u06FF]').hasMatch(v);
+  }
 }
 
 class HomeDetails {
@@ -172,6 +242,8 @@ class HomeDetails {
     this.canScan = false,
     this.qrUrl,
     this.itsId = '',
+    this.izanLabel = 'Izan',
+    this.izanHeading = 'Registration for Jaman Izan',
   });
 
   final String enDate;
@@ -186,6 +258,8 @@ class HomeDetails {
   final bool canScan;
   final String? qrUrl;
   final String itsId;
+  final String izanLabel;
+  final String izanHeading;
 
   /// One-line location for the home geography bar.
   String get displayLocation {
@@ -244,6 +318,11 @@ class HomeDetails {
       canScan: _asBool(json['can_scan']),
       qrUrl: json['qr']?.toString(),
       itsId: '${json['its_id'] ?? userJson?['ejamaat_id'] ?? ''}',
+      izanLabel: _nonEmptyLabel(json['izan_label'], 'Izan'),
+      izanHeading: _nonEmptyLabel(
+        json['izan_heading'],
+        'Registration for Jaman Izan',
+      ),
     );
   }
 
@@ -261,8 +340,15 @@ class HomeDetails {
       canScan: canScan,
       qrUrl: qrUrl,
       itsId: itsId,
+      izanLabel: izanLabel,
+      izanHeading: izanHeading,
     );
   }
+}
+
+String _nonEmptyLabel(dynamic value, String fallback) {
+  final text = '${value ?? ''}'.trim();
+  return text.isEmpty ? fallback : text;
 }
 
 Map<String, dynamic>? _asStringKeyedMap(dynamic value) {
@@ -394,3 +480,60 @@ class ScanCounts {
     );
   }
 }
+
+class ScannedUser {
+  const ScannedUser({
+    required this.its,
+    this.name = '',
+    this.message = '',
+    this.at,
+  });
+
+  final String its;
+  final String name;
+  final String message;
+  final DateTime? at;
+
+  String get displayName => name.trim().isEmpty ? 'Mehman' : name.trim();
+
+  factory ScannedUser.fromJson(Map<String, dynamic> json) {
+    final rawTime = '${json['scanning_time'] ?? json['scanned_date'] ?? ''}'.trim();
+    DateTime? at;
+    if (rawTime.isNotEmpty) {
+      // Date-only values (YYYY-MM-DD) parse as midnight — treat as unknown time.
+      if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(rawTime)) {
+        at = null;
+      } else {
+        at = DateTime.tryParse(rawTime);
+        if (at != null &&
+            at.hour == 0 &&
+            at.minute == 0 &&
+            at.second == 0 &&
+            !rawTime.contains(':')) {
+          at = null;
+        }
+      }
+    }
+    return ScannedUser(
+      its: '${json['its'] ?? ''}',
+      name: '${json['name'] ?? json['its_name'] ?? ''}'.trim(),
+      message: '${json['message'] ?? ''}'.trim(),
+      at: at,
+    );
+  }
+}
+
+class ScanSubmitResult {
+  const ScanSubmitResult({
+    required this.message,
+    this.name = '',
+    this.its = '',
+    this.alreadyScanned = false,
+  });
+
+  final String message;
+  final String name;
+  final String its;
+  final bool alreadyScanned;
+}
+

@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import '../auth/providers/auth_provider.dart';
 import '../broadcast/screens/broadcast_screen.dart';
 import '../calendar/screens/calendar_screen.dart';
+import '../committee/screens/committee_screen.dart';
 import '../dues/screens/dues_screen.dart';
+import '../history_scan/screens/history_scan_screen.dart';
 import '../home/screens/home_screen.dart';
 import '../home/widgets/qr_modal.dart';
 import '../izan/screens/izan_screen.dart';
@@ -29,6 +31,8 @@ class _AppShellState extends State<AppShell> {
   bool _calendarOpen = false;
   bool _duesOpen = false;
   bool _showQr = false;
+  bool _historyScanOpen = false;
+  bool _committeeOpen = false;
   bool _qiblaOpen = false;
   String? _qiblaLocationLabel;
 
@@ -58,7 +62,9 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     context.watch<ThemeProvider>();
-    final canScan = context.watch<AuthProvider>().canScan;
+    final auth = context.watch<AuthProvider>();
+    final canScan = auth.canScan;
+    final izanLabel = auth.izanLabel.trim().isEmpty ? 'Izan' : auth.izanLabel.trim();
 
     if (!canScan && _activeTab == AppTab.scan) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -78,11 +84,12 @@ class _AppShellState extends State<AppShell> {
           children: [
             Column(
               children: [
-                Expanded(child: _buildBody(canScan)),
+                Expanded(child: _buildBody(canScan, izanLabel, auth.izanHeading)),
                 _BottomNav(
                   activeTab: _activeTab,
                   onSelect: _selectTab,
                   showScan: canScan,
+                  izanLabel: izanLabel,
                 ),
               ],
             ),
@@ -108,7 +115,13 @@ class _AppShellState extends State<AppShell> {
                         onSelfScan: () {
                           setState(() {
                             _menuOpen = false;
-                            _showQr = true;
+                            _historyScanOpen = true;
+                          });
+                        },
+                        onCommittee: () {
+                          setState(() {
+                            _menuOpen = false;
+                            _committeeOpen = true;
                           });
                         },
                       ),
@@ -134,6 +147,18 @@ class _AppShellState extends State<AppShell> {
                   onClose: () => setState(() => _duesOpen = false),
                 ),
               ),
+            if (_historyScanOpen)
+              Positioned.fill(
+                child: HistoryScanScreen(
+                  onClose: () => setState(() => _historyScanOpen = false),
+                ),
+              ),
+            if (_committeeOpen)
+              Positioned.fill(
+                child: CommitteeScreen(
+                  onClose: () => setState(() => _committeeOpen = false),
+                ),
+              ),
             if (_showQr)
               Positioned.fill(
                 child: QrModal(onClose: () => setState(() => _showQr = false)),
@@ -151,7 +176,7 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildBody(bool canScan) {
+  Widget _buildBody(bool canScan, String izanLabel, String izanHeading) {
     switch (_activeTab) {
       case AppTab.broadcast:
         return BroadcastScreen(
@@ -162,6 +187,8 @@ class _AppShellState extends State<AppShell> {
         );
       case AppTab.izan:
         return IzanScreen(
+          title: izanLabel,
+          heading: izanHeading,
           onBack: () => setState(() {
             _activeTab = AppTab.menu;
             _menuOpen = false;
@@ -172,6 +199,7 @@ class _AppShellState extends State<AppShell> {
           return HomeScreen(
             onOpenQr: () => setState(() => _showQr = true),
             onOpenQibla: _openQibla,
+            onOpenBroadcast: () => _selectTab(AppTab.broadcast),
           );
         }
         return ScanScreen(
@@ -184,6 +212,7 @@ class _AppShellState extends State<AppShell> {
         return HomeScreen(
           onOpenQr: () => setState(() => _showQr = true),
           onOpenQibla: _openQibla,
+          onOpenBroadcast: () => _selectTab(AppTab.broadcast),
         );
     }
   }
@@ -194,11 +223,13 @@ class _BottomNav extends StatelessWidget {
     required this.activeTab,
     required this.onSelect,
     required this.showScan,
+    required this.izanLabel,
   });
 
   final AppTab activeTab;
   final ValueChanged<AppTab> onSelect;
   final bool showScan;
+  final String izanLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -228,7 +259,7 @@ class _BottomNav extends StatelessWidget {
             onTap: () => onSelect(AppTab.broadcast),
           ),
           _NavItem(
-            label: 'Izan',
+            label: izanLabel,
             icon: Icons.back_hand_outlined,
             selected: activeTab == AppTab.izan,
             onTap: () => onSelect(AppTab.izan),

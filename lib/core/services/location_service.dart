@@ -93,20 +93,10 @@ class LocationService {
   }
 
   Future<String> reverseGeocode(double lat, double lon) async {
-    try {
-      final nominatim = await _reverseNominatim(lat, lon);
-      if (nominatim != null && nominatim.isNotEmpty) {
-        return nominatim;
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Nominatim failed: $e');
-      }
-    }
-
+    // Prefer English providers first so Kuwait devices don't get Arabic labels.
     try {
       final bigData = await _reverseBigDataCloud(lat, lon);
-      if (bigData != null && bigData.isNotEmpty) {
+      if (bigData != null && bigData.isNotEmpty && !_containsArabic(bigData)) {
         return bigData;
       }
     } catch (e) {
@@ -115,13 +105,35 @@ class LocationService {
       }
     }
 
+    try {
+      final nominatim = await _reverseNominatim(lat, lon);
+      if (nominatim != null &&
+          nominatim.isNotEmpty &&
+          !_containsArabic(nominatim)) {
+        return nominatim;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Nominatim failed: $e');
+      }
+    }
+
+    // Last resort: still return a place string if we only got Arabic.
+    try {
+      final bigData = await _reverseBigDataCloud(lat, lon);
+      if (bigData != null && bigData.isNotEmpty) {
+        return bigData;
+      }
+    } catch (_) {}
+
     return '${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}';
   }
 
   Future<String?> _reverseNominatim(double lat, double lon) async {
     final uri = Uri.parse(
       'https://nominatim.openstreetmap.org/reverse'
-      '?format=jsonv2&lat=$lat&lon=$lon&zoom=10&addressdetails=1',
+      '?format=jsonv2&lat=$lat&lon=$lon&zoom=10&addressdetails=1'
+      '&accept-language=en',
     );
 
     final response = await http
@@ -129,6 +141,7 @@ class LocationService {
           uri,
           headers: {
             'Accept': 'application/json',
+            'Accept-Language': 'en',
             'User-Agent': 'TMKKuwaitApp/1.0 (https://tmk53.com; contact@tmk53.com)',
             'Referer': 'https://tmk53.com/',
           },
@@ -215,6 +228,16 @@ class LocationService {
       }
     }
     return null;
+  }
+
+  /// True when the label includes Arabic script characters.
+  bool _containsArabic(String text) {
+    return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
+  }
+
+  /// Public helper so UI can ignore Arabic values cached on device.
+  static bool isArabicLabel(String text) {
+    return RegExp(r'[\u0600-\u06FF]').hasMatch(text);
   }
 
   Future<bool> openLocationSettings() => Geolocator.openLocationSettings();

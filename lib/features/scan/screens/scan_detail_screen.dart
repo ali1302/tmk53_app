@@ -1,4 +1,6 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/app_models.dart';
@@ -17,9 +19,13 @@ class ScanDetailScreen extends StatefulWidget {
 }
 
 class _ScanDetailScreenState extends State<ScanDetailScreen> {
+  static const int _itsLength = 8;
+
   String _mode = 'Manual Scan';
   final _itsController = TextEditingController();
-  String? _scannedUser;
+  final _itsFocus = FocusNode();
+  final _successPlayer = AudioPlayer();
+  bool _autoSubmitting = false;
 
   @override
   void initState() {
@@ -32,34 +38,100 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
               event: widget.event,
             );
       }
+      if (_mode == 'Manual Scan') {
+        _itsFocus.requestFocus();
+      }
     });
   }
 
   @override
   void dispose() {
     _itsController.dispose();
+    _itsFocus.dispose();
+    _successPlayer.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  void _onItsChanged(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    final clipped =
+        digits.length > _itsLength ? digits.substring(0, _itsLength) : digits;
+    if (clipped != value) {
+      _itsController.value = TextEditingValue(
+        text: clipped,
+        selection: TextSelection.collapsed(offset: clipped.length),
+      );
+    }
+    if (clipped.length == _itsLength) {
+      _submit(fromAuto: true);
+    }
+  }
+
+  Future<void> _playSuccessSound() async {
+    try {
+      await _successPlayer.stop();
+      await _successPlayer.play(AssetSource('sounds/scan_success.wav'));
+    } catch (_) {
+      await SystemSound.play(SystemSoundType.click);
+    }
+    await HapticFeedback.mediumImpact();
+  }
+
+  Future<void> _submit({bool fromAuto = false}) async {
     final value = _itsController.text.trim();
     if (value.isEmpty) return;
-    final auth = context.read<AuthProvider>();
-    final ok = await context.read<ScanProvider>().submitScan(
-          token: auth.token ?? '',
-          event: widget.event,
-          its: value,
-        );
-    if (!mounted) return;
-    if (ok) {
-      setState(() {
-        _scannedUser = value;
-        _itsController.clear();
-      });
-    }
-    final message = context.read<ScanProvider>().lastScanMessage;
-    if (message != null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    if (fromAuto && value.length != _itsLength) return;
+
+    final provider = context.read<ScanProvider>();
+    if (provider.isSubmitting || _autoSubmitting) return;
+
+    setState(() => _autoSubmitting = true);
+    try {
+      final auth = context.read<AuthProvider>();
+      final ok = await provider.submitScan(
+        token: auth.token ?? '',
+        event: widget.event,
+        its: value,
+      );
+      if (!mounted) return;
+      final message = provider.lastScanMessage;
+      final already = provider.lastScanAlreadyScanned;
+      if (ok) {
+        setState(() {
+          _itsController.clear();
+        });
+        if (already) {
+          await SystemSound.play(SystemSoundType.alert);
+          await HapticFeedback.heavyImpact();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message ?? 'ITS is already scanned.'),
+                backgroundColor: const Color(0xFFB45309),
+              ),
+            );
+          }
+        } else {
+          await _playSuccessSound();
+        }
+        if (mounted) {
+          _itsFocus.requestFocus();
+        }
+      } else {
+        await SystemSound.play(SystemSoundType.alert);
+        await HapticFeedback.heavyImpact();
+        if (mounted && message != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _autoSubmitting = false);
+      } else {
+        _autoSubmitting = false;
+      }
     }
   }
 
@@ -67,6 +139,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
   Widget build(BuildContext context) {
     final provider = context.watch<ScanProvider>();
     final dates = widget.event.dates.split(' | ');
+    final busy = provider.isSubmitting || provider.isRemoving || _autoSubmitting;
     final counts = [
       (label: 'M:', value: provider.counts.male, bg: const Color(0xFF4A90D9)),
       (label: 'F:', value: provider.counts.female, bg: const Color(0xFFF4A0B0)),
@@ -243,7 +316,14 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                         final selected = _mode == mode;
                         return Expanded(
                           child: InkWell(
-                            onTap: () => setState(() => _mode = mode),
+                            onTap: () {
+                              setState(() => _mode = mode);
+                              if (mode == 'Manual Scan') {
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  _itsFocus.requestFocus();
+                                });
+                              }
+                            },
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
@@ -275,13 +355,26 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                           children: [
                             TextField(
                               controller: _itsController,
+                              focusNode: _itsFocus,
                               keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(hintText: 'Enter ITS'),
+                              textInputAction: TextInputAction.done,
+                              maxLength: _itsLength,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(_itsLength),
+                              ],
+                              onChanged: _onItsChanged,
+                              onSubmitted: (_) => _submit(),
+                              decoration: const InputDecoration(
+                                hintText: 'Enter 8-digit ITS',
+                                counterText: '',
+                                helperText: 'Auto-submits after 8 digits',
+                              ),
                             ),
                             const SizedBox(height: 12),
                             ElevatedButton.icon(
-                              onPressed: provider.isSubmitting ? null : _submit,
-                              icon: provider.isSubmitting
+                              onPressed: busy ? null : () => _submit(),
+                              icon: busy
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,
@@ -290,6 +383,97 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                                   : const Icon(Icons.search, size: 16),
                               label: const Text('Submit'),
                             ),
+                            const SizedBox(height: 16),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Scanned Users (${provider.scannedUsers.length})',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            if (provider.scannedUsers.isEmpty)
+                              const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'No user(s) scanned.',
+                                  style: TextStyle(fontSize: 13, color: AppColors.gray400),
+                                ),
+                              )
+                            else
+                              ...provider.scannedUsers.map((entry) {
+                                return Container(
+                                  width: double.infinity,
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF0FDF4),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.check_circle,
+                                        size: 18,
+                                        color: Color(0xFF16A34A),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              entry.displayName,
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF1F2937),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'ITS: ${entry.its}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: AppColors.gray500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (entry.at != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 4),
+                                          child: Text(
+                                            _formatTime(entry.at!),
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.gray400,
+                                            ),
+                                          ),
+                                        ),
+                                      IconButton(
+                                        tooltip: 'Remove from scanned',
+                                        onPressed: busy
+                                            ? null
+                                            : () => _confirmRemove(entry),
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          size: 20,
+                                          color: Color(0xFFDC2626),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }),
                           ],
                         ),
                       )
@@ -315,23 +499,62 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Scanned User:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _scannedUser == null
-                    ? 'No user(s) scanned.'
-                    : 'ITS: $_scannedUser — ${provider.lastScanMessage ?? 'Scanned successfully.'}',
-                style: const TextStyle(fontSize: 14, color: AppColors.gray400),
-              ),
             ],
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _confirmRemove(ScannedUser entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove scan?'),
+        content: Text(
+          'Remove ${entry.displayName} (ITS: ${entry.its}) from scanned list?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final auth = context.read<AuthProvider>();
+    final provider = context.read<ScanProvider>();
+    final ok = await provider.removeScannedUser(
+      token: auth.token ?? '',
+      event: widget.event,
+      its: entry.its,
+    );
+    if (!mounted) return;
+    final message = provider.lastScanMessage ??
+        (ok ? 'ITS removed from scanned list.' : 'Unable to remove scan.');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: ok ? const Color(0xFF166534) : const Color(0xFFB91C1C),
+      ),
+    );
+    if (mounted) {
+      _itsFocus.requestFocus();
+    }
+  }
+
+  String _formatTime(DateTime at) {
+    final h = at.hour.toString().padLeft(2, '0');
+    final m = at.minute.toString().padLeft(2, '0');
+    final s = at.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
   }
 }
 
