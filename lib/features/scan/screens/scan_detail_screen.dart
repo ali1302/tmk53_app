@@ -1,12 +1,15 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/app_models.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/scan_provider.dart';
+import '../utils/its_from_qr.dart';
 
 class ScanDetailScreen extends StatefulWidget {
   const ScanDetailScreen({super.key, required this.event, required this.onBack});
@@ -25,7 +28,22 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
   final _itsController = TextEditingController();
   final _itsFocus = FocusNode();
   final _successPlayer = AudioPlayer();
+  final _scannerController = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    formats: const [BarcodeFormat.qrCode],
+    autoStart: false,
+  );
   bool _autoSubmitting = false;
+  bool _scannerStarted = false;
+  String? _lastInvalidQr;
+  DateTime? _lastInvalidAt;
+
+  bool get _cameraQrSupported {
+    if (kIsWeb) return true;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+  }
 
   @override
   void initState() {
@@ -49,7 +67,51 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
     _itsController.dispose();
     _itsFocus.dispose();
     _successPlayer.dispose();
+    _scannerController.dispose();
     super.dispose();
+  }
+
+  Future<void> _setMode(String mode) async {
+    if (_mode == mode) return;
+    setState(() => _mode = mode);
+    if (mode == 'Manual Scan') {
+      await _stopScanner();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _itsFocus.requestFocus();
+      });
+    } else {
+      _itsFocus.unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _mode == 'QR Code') {
+          _startScanner();
+        }
+      });
+    }
+  }
+
+  Future<void> _startScanner() async {
+    if (!_cameraQrSupported || _scannerStarted) return;
+    try {
+      await _scannerController.start();
+      if (mounted) setState(() => _scannerStarted = true);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _scannerStarted = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to open camera. Allow camera permission and try again.'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopScanner() async {
+    if (!_scannerStarted) return;
+    try {
+      await _scannerController.stop();
+    } catch (_) {}
+    _scannerStarted = false;
   }
 
   void _onItsChanged(String value) {
@@ -63,7 +125,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
       );
     }
     if (clipped.length == _itsLength) {
-      _submit(fromAuto: true);
+      _submitIts(clipped, fromAuto: true);
     }
   }
 
@@ -77,17 +139,56 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
     await HapticFeedback.mediumImpact();
   }
 
+  Future<void> _onQrDetect(BarcodeCapture capture) async {
+    if (_mode != 'QR Code') return;
+    if (_autoSubmitting || context.read<ScanProvider>().isSubmitting) return;
+
+    for (final barcode in capture.barcodes) {
+      final raw = barcode.rawValue?.trim() ?? '';
+      if (raw.isEmpty) continue;
+      final its = itsFromQrPayload(raw);
+      if (its == null || its.length != _itsLength) {
+        final now = DateTime.now();
+        final isRepeat = _lastInvalidQr == raw &&
+            _lastInvalidAt != null &&
+            now.difference(_lastInvalidAt!) < const Duration(seconds: 3);
+        if (!isRepeat && mounted) {
+          _lastInvalidQr = raw;
+          _lastInvalidAt = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('QR does not contain a valid 8-digit ITS.')),
+          );
+        }
+        return;
+      }
+      await _submitIts(its, fromQr: true);
+      return;
+    }
+  }
+
   Future<void> _submit({bool fromAuto = false}) async {
-    final value = _itsController.text.trim();
+    await _submitIts(_itsController.text.trim(), fromAuto: fromAuto);
+  }
+
+  Future<void> _submitIts(
+    String value, {
+    bool fromAuto = false,
+    bool fromQr = false,
+  }) async {
     if (value.isEmpty) return;
-    if (fromAuto && value.length != _itsLength) return;
+    if ((fromAuto || fromQr) && value.length != _itsLength) return;
 
     final provider = context.read<ScanProvider>();
     if (provider.isSubmitting || _autoSubmitting) return;
 
     setState(() => _autoSubmitting = true);
+    final auth = context.read<AuthProvider>();
+    if (fromQr) {
+      try {
+        await _scannerController.stop();
+      } catch (_) {}
+    }
     try {
-      final auth = context.read<AuthProvider>();
       final ok = await provider.submitScan(
         token: auth.token ?? '',
         event: widget.event,
@@ -114,7 +215,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
         } else {
           await _playSuccessSound();
         }
-        if (mounted) {
+        if (mounted && _mode == 'Manual Scan') {
           _itsFocus.requestFocus();
         }
       } else {
@@ -127,6 +228,14 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
         }
       }
     } finally {
+      if (fromQr && _mode == 'QR Code' && mounted) {
+        try {
+          await _scannerController.start();
+          _scannerStarted = true;
+        } catch (_) {
+          _scannerStarted = false;
+        }
+      }
       if (mounted) {
         setState(() => _autoSubmitting = false);
       } else {
@@ -316,14 +425,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                         final selected = _mode == mode;
                         return Expanded(
                           child: InkWell(
-                            onTap: () {
-                              setState(() => _mode = mode);
-                              if (mode == 'Manual Scan') {
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  _itsFocus.requestFocus();
-                                });
-                              }
-                            },
+                            onTap: busy ? null : () => _setMode(mode),
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
@@ -350,7 +452,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                     ),
                     if (_mode == 'Manual Scan')
                       Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                         child: Column(
                           children: [
                             TextField(
@@ -383,124 +485,201 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                                   : const Icon(Icons.search, size: 16),
                               label: const Text('Submit'),
                             ),
-                            const SizedBox(height: 16),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Scanned Users (${provider.scannedUsers.length})',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (provider.scannedUsers.isEmpty)
-                              const Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'No user(s) scanned.',
-                                  style: TextStyle(fontSize: 13, color: AppColors.gray400),
-                                ),
-                              )
-                            else
-                              ...provider.scannedUsers.map((entry) {
-                                return Container(
-                                  width: double.infinity,
-                                  margin: const EdgeInsets.only(bottom: 8),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF0FDF4),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: const Color(0xFFBBF7D0)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.check_circle,
-                                        size: 18,
-                                        color: Color(0xFF16A34A),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              entry.displayName,
-                                              style: const TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFF1F2937),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              'ITS: ${entry.its}',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                color: AppColors.gray500,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      if (entry.at != null)
-                                        Padding(
-                                          padding: const EdgeInsets.only(right: 4),
-                                          child: Text(
-                                            _formatTime(entry.at!),
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: AppColors.gray400,
-                                            ),
-                                          ),
-                                        ),
-                                      IconButton(
-                                        tooltip: 'Remove from scanned',
-                                        onPressed: busy
-                                            ? null
-                                            : () => _confirmRemove(entry),
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 20,
-                                          color: Color(0xFFDC2626),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }),
                           ],
                         ),
                       )
                     else
                       Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.document_scanner_outlined,
-                              size: 48,
-                              color: AppColors.primary,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Camera QR scanning can be enabled next.\nUse Manual Scan for now.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 12, color: AppColors.gray400),
-                            ),
-                          ],
-                        ),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: _buildQrScannerPane(busy),
                       ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: Column(
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Scanned Users (${provider.scannedUsers.length})',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          if (provider.scannedUsers.isEmpty)
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'No user(s) scanned.',
+                                style: TextStyle(fontSize: 13, color: AppColors.gray400),
+                              ),
+                            )
+                          else
+                            ...provider.scannedUsers.map((entry) {
+                              final colors = _colorsForKind(entry.kind);
+                              return Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colors.bg,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: colors.border),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      colors.icon,
+                                      size: 18,
+                                      color: colors.accent,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            entry.displayName,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF1F2937),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'ITS: ${entry.its}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: AppColors.gray500,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            entry.kindLabel,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: colors.accent,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (entry.at != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(right: 4),
+                                        child: Text(
+                                          _formatTime(entry.at!),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.gray400,
+                                          ),
+                                        ),
+                                      ),
+                                    IconButton(
+                                      tooltip: 'Remove from scanned',
+                                      onPressed: busy
+                                          ? null
+                                          : () => _confirmRemove(entry),
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 20,
+                                        color: Color(0xFFDC2626),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQrScannerPane(bool busy) {
+    if (!_cameraQrSupported) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.qr_code_scanner, size: 48, color: AppColors.primary),
+            const SizedBox(height: 12),
+            Text(
+              'QR camera scanning works on Android and iPhone.\nUse Manual Scan on this device.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: AppColors.gray400),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: AspectRatio(
+            aspectRatio: 3 / 4,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                MobileScanner(
+                  controller: _scannerController,
+                  onDetect: _onQrDetect,
+                  errorBuilder: (context, error) {
+                    return Container(
+                      color: Colors.black,
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        error.errorCode == MobileScannerErrorCode.permissionDenied
+                            ? 'Camera permission is required to scan QR codes.\nEnable it in system settings.'
+                            : 'Unable to open camera.\n${error.errorDetails?.message ?? error.errorCode.name}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                      ),
+                    );
+                  },
+                ),
+                IgnorePointer(
+                  child: CustomPaint(
+                    painter: _QrFramePainter(),
+                  ),
+                ),
+                if (busy)
+                  Container(
+                    color: Colors.black45,
+                    alignment: Alignment.center,
+                    child: const CircularProgressIndicator(color: Colors.white),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          busy ? 'Submitting scan…' : 'Point camera at ITS QR code',
+          style: const TextStyle(fontSize: 12, color: AppColors.gray500),
         ),
       ],
     );
@@ -550,12 +729,80 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
     }
   }
 
+  ({Color bg, Color border, Color accent, IconData icon}) _colorsForKind(
+    ScanUserKind kind,
+  ) {
+    switch (kind) {
+      case ScanUserKind.mehman:
+        return (
+          bg: const Color(0xFFFFFBEB),
+          border: const Color(0xFFFDE68A),
+          accent: const Color(0xFFD97706),
+          icon: Icons.person_outline,
+        );
+      case ScanUserKind.notRegistered:
+        return (
+          bg: const Color(0xFFFEF2F2),
+          border: const Color(0xFFFECACA),
+          accent: const Color(0xFFDC2626),
+          icon: Icons.warning_amber_rounded,
+        );
+      case ScanUserKind.registered:
+        return (
+          bg: const Color(0xFFF0FDF4),
+          border: const Color(0xFFBBF7D0),
+          accent: const Color(0xFF16A34A),
+          icon: Icons.check_circle,
+        );
+    }
+  }
+
   String _formatTime(DateTime at) {
     final h = at.hour.toString().padLeft(2, '0');
     final m = at.minute.toString().padLeft(2, '0');
     final s = at.second.toString().padLeft(2, '0');
     return '$h:$m:$s';
   }
+}
+
+class _QrFramePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final overlay = Paint()..color = Colors.black.withValues(alpha: 0.35);
+    final stroke = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+
+    final cut = Rect.fromCenter(
+      center: Offset(size.width / 2, size.height / 2),
+      width: size.width * 0.72,
+      height: size.width * 0.72,
+    );
+
+    final path = Path()
+      ..addRect(Offset.zero & size)
+      ..addRRect(RRect.fromRectAndRadius(cut, const Radius.circular(16)))
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(path, overlay);
+
+    const corner = 28.0;
+    // Top-left
+    canvas.drawLine(cut.topLeft, cut.topLeft + const Offset(corner, 0), stroke);
+    canvas.drawLine(cut.topLeft, cut.topLeft + const Offset(0, corner), stroke);
+    // Top-right
+    canvas.drawLine(cut.topRight, cut.topRight + const Offset(-corner, 0), stroke);
+    canvas.drawLine(cut.topRight, cut.topRight + const Offset(0, corner), stroke);
+    // Bottom-left
+    canvas.drawLine(cut.bottomLeft, cut.bottomLeft + const Offset(corner, 0), stroke);
+    canvas.drawLine(cut.bottomLeft, cut.bottomLeft + const Offset(0, -corner), stroke);
+    // Bottom-right
+    canvas.drawLine(cut.bottomRight, cut.bottomRight + const Offset(-corner, 0), stroke);
+    canvas.drawLine(cut.bottomRight, cut.bottomRight + const Offset(0, -corner), stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _Card extends StatelessWidget {

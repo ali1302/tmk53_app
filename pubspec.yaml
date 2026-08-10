@@ -24,6 +24,7 @@ dependencies:
   webview_flutter_android: ^4.12.0
   adhan_dart: ^2.0.1
   audioplayers: ^6.5.0
+  mobile_scanner: ^7.4.0
 
 dev_dependencies:
   flutter_test:

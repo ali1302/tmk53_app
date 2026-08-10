@@ -144,6 +144,8 @@ class ScanProvider extends ChangeNotifier {
           its: its,
           submitName: result.name,
           message: lastScanMessage ?? result.message,
+          submitKind: result.kind,
+          submitStatusLabel: result.statusLabel,
         );
       } else {
         scannedUsers = _upsertLatest(
@@ -152,6 +154,8 @@ class ScanProvider extends ChangeNotifier {
           its: its,
           submitName: result.name,
           message: lastScanMessage ?? result.message,
+          submitKind: result.kind,
+          submitStatusLabel: result.statusLabel,
         );
       }
 
@@ -246,6 +250,8 @@ class ScanProvider extends ChangeNotifier {
     required String its,
     required String submitName,
     required String message,
+    ScanUserKind submitKind = ScanUserKind.registered,
+    String submitStatusLabel = '',
   }) {
     final prevByIts = {for (final u in previous) u.its: u};
     final refreshByIts = {for (final u in refreshed) u.its: u};
@@ -268,12 +274,22 @@ class ScanProvider extends ChangeNotifier {
       final at = isLatest
           ? DateTime.now()
           : (fromPrev?.at ?? fromRefresh?.at);
+      final kind = isLatest
+          ? (fromRefresh?.kind ?? submitKind)
+          : (fromRefresh?.kind ?? fromPrev?.kind ?? ScanUserKind.registered);
+      final statusLabel = isLatest
+          ? ((fromRefresh?.statusLabel.isNotEmpty ?? false)
+              ? fromRefresh!.statusLabel
+              : submitStatusLabel)
+          : (fromRefresh?.statusLabel ?? fromPrev?.statusLabel ?? '');
       merged.add(
         ScannedUser(
           its: id,
           name: name,
           message: isLatest ? message : (fromPrev?.message ?? fromRefresh?.message ?? ''),
           at: at,
+          kind: kind,
+          statusLabel: statusLabel,
         ),
       );
     }

@@ -481,20 +481,62 @@ class ScanCounts {
   }
 }
 
+enum ScanUserKind {
+  registered,
+  mehman,
+  notRegistered,
+}
+
+ScanUserKind parseScanUserKind({
+  String? scanKind,
+  String? statusLabel,
+  String? name,
+}) {
+  final raw = '${scanKind ?? ''} ${statusLabel ?? ''}'.trim().toLowerCase();
+  if (raw.contains('mehman')) return ScanUserKind.mehman;
+  if (raw.contains('not_reg') ||
+      raw.contains('not reg') ||
+      raw.contains('unregistered') ||
+      raw.contains('not register')) {
+    return ScanUserKind.notRegistered;
+  }
+  if (raw.contains('regist')) return ScanUserKind.registered;
+
+  final n = (name ?? '').trim().toLowerCase();
+  if (n.isEmpty || n == 'mehman') return ScanUserKind.mehman;
+  return ScanUserKind.registered;
+}
+
 class ScannedUser {
   const ScannedUser({
     required this.its,
     this.name = '',
     this.message = '',
     this.at,
+    this.kind = ScanUserKind.registered,
+    this.statusLabel = '',
   });
 
   final String its;
   final String name;
   final String message;
   final DateTime? at;
+  final ScanUserKind kind;
+  final String statusLabel;
 
   String get displayName => name.trim().isEmpty ? 'Mehman' : name.trim();
+
+  String get kindLabel {
+    if (statusLabel.trim().isNotEmpty) return statusLabel.trim();
+    switch (kind) {
+      case ScanUserKind.mehman:
+        return 'Mehman';
+      case ScanUserKind.notRegistered:
+        return 'Not Register';
+      case ScanUserKind.registered:
+        return 'Registered Member';
+    }
+  }
 
   factory ScannedUser.fromJson(Map<String, dynamic> json) {
     final rawTime = '${json['scanning_time'] ?? json['scanned_date'] ?? ''}'.trim();
@@ -514,11 +556,20 @@ class ScannedUser {
         }
       }
     }
+    final name = '${json['name'] ?? json['its_name'] ?? ''}'.trim();
+    final statusLabel = '${json['status_label'] ?? ''}'.trim();
+    final kind = parseScanUserKind(
+      scanKind: '${json['scan_kind'] ?? ''}',
+      statusLabel: statusLabel,
+      name: name,
+    );
     return ScannedUser(
       its: '${json['its'] ?? ''}',
-      name: '${json['name'] ?? json['its_name'] ?? ''}'.trim(),
+      name: name,
       message: '${json['message'] ?? ''}'.trim(),
       at: at,
+      kind: kind,
+      statusLabel: statusLabel,
     );
   }
 }
@@ -529,11 +580,15 @@ class ScanSubmitResult {
     this.name = '',
     this.its = '',
     this.alreadyScanned = false,
+    this.kind = ScanUserKind.registered,
+    this.statusLabel = '',
   });
 
   final String message;
   final String name;
   final String its;
   final bool alreadyScanned;
+  final ScanUserKind kind;
+  final String statusLabel;
 }
 

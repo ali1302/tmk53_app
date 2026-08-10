@@ -159,6 +159,36 @@ class ScanRepository {
     return '';
   }
 
+  Map<String, dynamic>? _scannedItem(dynamic response, String its) {
+    if (response is! Map<String, dynamic>) return null;
+    final scanned = response['scanned'];
+    if (scanned is! List) return null;
+    for (final item in scanned) {
+      if (item is Map) {
+        final map = Map<String, dynamic>.from(item);
+        if ('${map['its'] ?? ''}' == its) return map;
+      }
+    }
+    if (scanned.isNotEmpty && scanned.first is Map) {
+      return Map<String, dynamic>.from(scanned.first as Map);
+    }
+    return null;
+  }
+
+  ScanUserKind _kindFromScanned(dynamic response, String its, String name) {
+    final map = _scannedItem(response, its);
+    return parseScanUserKind(
+      scanKind: map == null ? '' : '${map['scan_kind'] ?? ''}',
+      statusLabel: map == null ? '' : '${map['status_label'] ?? ''}',
+      name: name,
+    );
+  }
+
+  String _statusLabelFromScanned(dynamic response, String its) {
+    final map = _scannedItem(response, its);
+    return map == null ? '' : '${map['status_label'] ?? ''}'.trim();
+  }
+
   bool _alreadyFromResponse(dynamic response, String its) {
     if (response is! Map<String, dynamic>) return false;
     final flag = response['already_scanned'];
@@ -260,11 +290,14 @@ class ScanRepository {
     );
     if (response is Map<String, dynamic>) {
       final already = _alreadyFromResponse(response, its);
+      final name = _nameFromScanned(response, its);
       return ScanSubmitResult(
         message: _messageFromResponse(response, already: already),
         its: its,
-        name: _nameFromScanned(response, its),
+        name: name,
         alreadyScanned: already,
+        kind: _kindFromScanned(response, its, name),
+        statusLabel: _statusLabelFromScanned(response, its),
       );
     }
     return ScanSubmitResult(message: 'Scanned successfully.', its: its);
@@ -339,11 +372,14 @@ class ScanRepository {
     );
     if (response is Map<String, dynamic>) {
       final already = _alreadyFromResponse(response, its);
+      final name = _nameFromScanned(response, its);
       return ScanSubmitResult(
         message: _messageFromResponse(response, already: already),
         its: its,
-        name: _nameFromScanned(response, its),
+        name: name,
         alreadyScanned: already,
+        kind: _kindFromScanned(response, its, name),
+        statusLabel: _statusLabelFromScanned(response, its),
       );
     }
     return ScanSubmitResult(message: 'Scanned successfully.', its: its);

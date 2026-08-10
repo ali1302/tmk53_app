@@ -37,6 +37,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>TMK Kuwait needs camera access to scan ITS QR codes during event check-in.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>TMK Kuwait uses your location to show where you are logged in from.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
