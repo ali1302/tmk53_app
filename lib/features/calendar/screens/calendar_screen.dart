@@ -19,16 +19,13 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> {
   static const _latCacheKey = 'tmk_user_geo_lat';
   static const _lonCacheKey = 'tmk_user_geo_lon';
-  // TMK Kuwait fallback when GPS not available yet.
-  static const _kuwaitLat = 29.3759;
-  static const _kuwaitLon = 47.9774;
 
   final _sunTimesService = SunTimesService();
 
   late MisriDate _hijriMonth;
   DateTime? _selected;
-  double _latitude = _kuwaitLat;
-  double _longitude = _kuwaitLon;
+  double _latitude = SunTimesService.kuwaitLatitude;
+  double _longitude = SunTimesService.kuwaitLongitude;
   SunTimes? _sunTimes;
 
   @override

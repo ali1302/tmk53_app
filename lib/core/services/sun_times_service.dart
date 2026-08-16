@@ -22,21 +22,34 @@ class SunTimes {
   static String _fmt(DateTime t) => DateFormat('hh:mm').format(t);
 }
 
-/// Sunrise, Zawal (solar noon / Dhuhr), Maghrib, and Fajr from lat/lon.
+/// Sunrise, Zawal (solar noon / Dhuhr), Maghrib, and Fajr for the user's location.
+///
+/// Uses Kuwait calculation angles (Fajr 18°, Isha 17.5°), but coordinates come
+/// from GPS. Times are shown in the device's local timezone (where the user is).
 class SunTimesService {
-  /// Kuwait City — used when GPS is unavailable so Misri Maghrib/Fajr still work.
+  /// Fallback when GPS is unavailable.
   static const kuwaitLatitude = 29.3759;
   static const kuwaitLongitude = 47.9774;
 
+  /// Kuwait City fallback (only when location is unknown).
+  SunTimes? forKuwait({DateTime? date}) => forCoordinates(
+        latitude: kuwaitLatitude,
+        longitude: kuwaitLongitude,
+        date: date,
+      );
+
+  /// Prayer/sun times for [latitude]/[longitude], in the device local clock.
   SunTimes? forCoordinates({
     required double latitude,
     required double longitude,
     DateTime? date,
   }) {
     try {
-      final day = date ?? DateTime.now();
+      // Calendar day on the user's device (where they are logged in).
+      final local = (date ?? DateTime.now()).toLocal();
+      final day = DateTime(local.year, local.month, local.day);
+
       final coords = Coordinates(latitude, longitude);
-      // App is TMK 53 (Kuwait) — use Kuwait calculation method.
       final params = CalculationMethodParameters.kuwait();
       final times = PrayerTimes(
         date: day,
@@ -44,6 +57,7 @@ class SunTimesService {
         calculationParameters: params,
       );
 
+      // adhan_dart returns UTC — convert to the user's local timezone.
       return SunTimes(
         fajr: times.fajr.toLocal(),
         sunrise: times.sunrise.toLocal(),
@@ -54,10 +68,4 @@ class SunTimesService {
       return null;
     }
   }
-
-  SunTimes? forKuwait({DateTime? date}) => forCoordinates(
-        latitude: kuwaitLatitude,
-        longitude: kuwaitLongitude,
-        date: date,
-      );
 }

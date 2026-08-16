@@ -53,6 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Fallback until GPS arrives; then times follow the user's location.
+    _sunTimes = _sunTimesService.forKuwait();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _load();
       _restoreAndFetchLocation();
@@ -142,6 +144,8 @@ class _HomeScreenState extends State<HomeScreen> {
             _geoLocation == 'Location unavailable') {
           _geoLocation = 'Location unavailable';
         }
+        // Keep last GPS times if we have them; otherwise Kuwait fallback.
+        _sunTimes ??= _sunTimesService.forKuwait();
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
