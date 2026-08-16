@@ -105,6 +105,7 @@ class _HistoryScanScreenState extends State<HistoryScanScreen>
                         error: history.asbaqError,
                         emptyText: 'No Sabaq scan history found.',
                         onRefresh: _refresh,
+                        groupWise: true,
                       ),
                       _HistoryList(
                         items: history.majlisItems,
@@ -131,6 +132,7 @@ class _HistoryList extends StatelessWidget {
     required this.onRefresh,
     this.error,
     this.useMisriDate = false,
+    this.groupWise = false,
   });
 
   final List<HistoryItem> items;
@@ -139,6 +141,7 @@ class _HistoryList extends StatelessWidget {
   final String emptyText;
   final Future<void> Function() onRefresh;
   final bool useMisriDate;
+  final bool groupWise;
 
   @override
   Widget build(BuildContext context) {
@@ -168,10 +171,199 @@ class _HistoryList extends StatelessWidget {
             )
           else
             for (final item in items) ...[
-              _HistoryCard(item: item, useMisriDate: useMisriDate),
+              if (groupWise)
+                _GroupedHistoryCard(item: item)
+              else
+                _HistoryCard(item: item, useMisriDate: useMisriDate),
               const SizedBox(height: 10),
             ],
         ],
+      ),
+    );
+  }
+}
+
+class _GroupedHistoryCard extends StatefulWidget {
+  const _GroupedHistoryCard({required this.item});
+
+  final HistoryItem item;
+
+  @override
+  State<_GroupedHistoryCard> createState() => _GroupedHistoryCardState();
+}
+
+class _GroupedHistoryCardState extends State<_GroupedHistoryCard> {
+  bool _expanded = false;
+
+  Color get _statusColor {
+    switch (widget.item.status) {
+      case HistoryStatus.attended:
+      case HistoryStatus.registeredAttended:
+        return const Color(0xFF15803D);
+      case HistoryStatus.notRegisteredAttended:
+        return const Color(0xFFA16207);
+      case HistoryStatus.notAttended:
+      case HistoryStatus.registeredNotAttended:
+        return const Color(0xFFB45309);
+      case HistoryStatus.registered:
+        return const Color(0xFF1D4ED8);
+      case HistoryStatus.notRegistered:
+        return AppColors.gray500;
+      case HistoryStatus.unknown:
+        return AppColors.gray500;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final hasSessions = item.sessions.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: hasSessions
+              ? () => setState(() => _expanded = !_expanded)
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.title.isEmpty ? 'Sabaq' : item.title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1F2937),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        item.statusLabel.isEmpty
+                            ? item.status.name
+                            : item.statusLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _statusColor,
+                        ),
+                      ),
+                    ),
+                    if (hasSessions) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        _expanded
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        color: AppColors.gray500,
+                      ),
+                    ],
+                  ],
+                ),
+                if (item.subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    item.subtitle,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                  ),
+                ],
+                if (!hasSessions && item.date.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    item.date,
+                    style: const TextStyle(fontSize: 12, color: AppColors.gray500),
+                  ),
+                ],
+                if (hasSessions && !_expanded) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    item.attendCount > 0
+                        ? '${item.attendCount} attendance day${item.attendCount == 1 ? '' : 's'} · tap to view'
+                        : 'Tap to view attendance',
+                    style: const TextStyle(fontSize: 12, color: AppColors.gray500),
+                  ),
+                ],
+                if (hasSessions && _expanded) ...[
+                  const SizedBox(height: 10),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Attendance',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF374151),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  for (final session in item.sessions) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            size: 16,
+                            color: Color(0xFF15803D),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              session.date.isNotEmpty
+                                  ? session.date
+                                  : 'Attended',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1F2937),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            session.statusLabel.isNotEmpty
+                                ? session.statusLabel
+                                : 'Attended',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF15803D),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -186,8 +378,12 @@ class _HistoryCard extends StatelessWidget {
   Color get _statusColor {
     switch (item.status) {
       case HistoryStatus.attended:
+      case HistoryStatus.registeredAttended:
         return const Color(0xFF15803D);
+      case HistoryStatus.notRegisteredAttended:
+        return const Color(0xFFA16207);
       case HistoryStatus.notAttended:
+      case HistoryStatus.registeredNotAttended:
         return const Color(0xFFB45309);
       case HistoryStatus.registered:
         return const Color(0xFF1D4ED8);

@@ -17,21 +17,6 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  static const _hijriMonths = [
-    'Muharramul Haram',
-    'Safarul Khair',
-    'Rabi ul Awwal',
-    'Rabi ul Aakhar',
-    'Jumadil Ula',
-    'Jumadil Ukhra',
-    'Rajab ul Asab',
-    'Shaabaan',
-    'Ramadan',
-    'Shawwal',
-    'Zilqadah',
-    'Zilhijjah',
-  ];
-
   static const _latCacheKey = 'tmk_user_geo_lat';
   static const _lonCacheKey = 'tmk_user_geo_lon';
   // TMK Kuwait fallback when GPS not available yet.
@@ -193,7 +178,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     final selHijri = _selected == null ? null : MisriDate.fromGregorian(_selected!);
     final monthTitle =
-        '${_hijriMonths[_hijriMonth.month - 1]} - ${_hijriMonth.year}';
+        '${MisriDate.monthNames[_hijriMonth.month - 1]} - ${_hijriMonth.year}';
 
     return Material(
       color: Colors.white,
@@ -288,7 +273,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   const SizedBox(height: 16),
                   Text(
                     '${DateFormat('EEEE').format(_selected!)} , '
-                    '${selHijri.day} ${_hijriMonths[selHijri.month - 1]} ${selHijri.year}',
+                    '${selHijri.day} ${MisriDate.monthNames[selHijri.month - 1]} ${selHijri.year}',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,

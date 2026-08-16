@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,7 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
-import '../widgets/login_atmosphere_background.dart';
+import '../widgets/login_brand_background.dart';
 import 'its_login_webview_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -21,12 +23,13 @@ class _LoginScreenState extends State<LoginScreen>
     with TickerProviderStateMixin {
   late final AnimationController _enterController;
   late final AnimationController _pulseController;
+  late final AnimationController _shimmerController;
   late final Animation<double> _fadeIn;
   late final Animation<double> _scaleIn;
   late final Animation<double> _floatY;
   late final Animation<double> _glow;
+  late final Animation<double> _ringPulse;
 
-  /// webview_flutter only ships Android/iOS implementations.
   bool get _supportsInAppWebView {
     if (kIsWeb) return false;
     return defaultTargetPlatform == TargetPlatform.android ||
@@ -39,34 +42,42 @@ class _LoginScreenState extends State<LoginScreen>
 
     _enterController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1100),
+      duration: const Duration(milliseconds: 1200),
     );
     _fadeIn = CurvedAnimation(
       parent: _enterController,
-      curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+      curve: const Interval(0.0, 0.65, curve: Curves.easeOut),
     );
-    _scaleIn = Tween<double>(begin: 0.86, end: 1.0).animate(
+    _scaleIn = Tween<double>(begin: 0.82, end: 1.0).animate(
       CurvedAnimation(
         parent: _enterController,
-        curve: const Interval(0.0, 0.85, curve: Curves.easeOutCubic),
+        curve: const Interval(0.0, 0.9, curve: Curves.easeOutCubic),
       ),
     );
 
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2600),
+      duration: const Duration(milliseconds: 2800),
     );
-    _floatY = Tween<double>(begin: 0, end: -8).animate(
+    _floatY = Tween<double>(begin: 0, end: -10).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    _glow = Tween<double>(begin: 0.22, end: 0.55).animate(
+    _glow = Tween<double>(begin: 0.18, end: 0.48).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _ringPulse = Tween<double>(begin: 0.92, end: 1.08).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3200),
+    );
+
     _enterController.forward().whenComplete(() {
-      if (mounted) {
-        _pulseController.repeat(reverse: true);
-      }
+      if (!mounted) return;
+      _pulseController.repeat(reverse: true);
+      _shimmerController.repeat();
     });
   }
 
@@ -74,13 +85,13 @@ class _LoginScreenState extends State<LoginScreen>
   void dispose() {
     _enterController.dispose();
     _pulseController.dispose();
+    _shimmerController.dispose();
     super.dispose();
   }
 
   Future<void> _loginWithIts(BuildContext context) async {
     final auth = context.read<AuthProvider>();
 
-    // Quick health check so users don't land on a raw PHP DB error page.
     try {
       final probe = await http
           .get(Uri.parse(AppConfig.itsOneLoginUrl))
@@ -100,9 +111,7 @@ class _LoginScreenState extends State<LoginScreen>
         );
         return;
       }
-    } catch (_) {
-      // Continue — network probe is best-effort only.
-    }
+    } catch (_) {}
 
     Future<String?> Function(String loginUrl)? openInApp;
     if (_supportsInAppWebView) {
@@ -124,118 +133,103 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  /// Logo scales with shortest screen side so it stays sharp on phone / tablet.
+  double _logoExtent(BoxConstraints constraints) {
+    final shortest = math.min(constraints.maxWidth, constraints.maxHeight);
+    if (!shortest.isFinite || shortest <= 0) return 160.0;
+    final preferred = math.min(
+      constraints.maxWidth * 0.78,
+      constraints.maxHeight * 0.46,
+    );
+    final maxSize = shortest * 0.78;
+    final minSize = math.min(160.0, maxSize);
+    return preferred.clamp(minSize, maxSize).toDouble();
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final topInset = MediaQuery.paddingOf(context).top;
 
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
         children: [
-          const LoginAtmosphereBackground(),
+          const LoginBrandBackground(),
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final logoSize = constraints.maxHeight < 560 ? 140.0 : 180.0;
-                return SingleChildScrollView(
+                final logoSize = _logoExtent(constraints);
+                return Padding(
                   padding: EdgeInsets.fromLTRB(
-                    24,
-                    24,
-                    24,
-                    16 + bottomInset * 0.15,
+                    20,
+                    math.max(8, topInset * 0.1),
+                    20,
+                    16 + bottomInset * 0.2,
                   ),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight - 8,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          children: [
-                            const SizedBox(height: 8),
-                            ClipRect(
-                              child: AnimatedBuilder(
-                                animation: Listenable.merge(
-                                    [_enterController, _pulseController]),
-                                builder: (context, child) {
-                                  return Opacity(
-                                    opacity: _fadeIn.value.clamp(0.0, 1.0),
-                                    child: Transform.translate(
-                                      offset: Offset(0, _floatY.value),
-                                      child: Transform.scale(
-                                        scale: _scaleIn.value,
-                                        child: child,
-                                      ),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: AnimatedBuilder(
+                            animation: Listenable.merge([
+                              _enterController,
+                              _pulseController,
+                              _shimmerController,
+                            ]),
+                            builder: (context, _) {
+                              return Opacity(
+                                opacity: _fadeIn.value.clamp(0.0, 1.0),
+                                child: Transform.translate(
+                                  offset: Offset(0, _floatY.value),
+                                  child: Transform.scale(
+                                    scale: _scaleIn.value,
+                                    child: _DynamicLogo(
+                                      size: logoSize,
+                                      glow: _glow.value,
+                                      ringScale: _ringPulse.value,
+                                      shimmer: _shimmerController.value,
                                     ),
-                                  );
-                                },
-                                child: SizedBox(
-                                  width: logoSize,
-                                  height: logoSize,
-                                  child: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      AnimatedBuilder(
-                                        animation: _glow,
-                                        builder: (context, _) {
-                                          return Container(
-                                            width: logoSize * 0.82,
-                                            height: logoSize * 0.82,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: AppColors.accent
-                                                      .withValues(
-                                                          alpha: _glow.value),
-                                                  blurRadius: 36,
-                                                  spreadRadius: 4,
-                                                ),
-                                                BoxShadow(
-                                                  color: Colors.white
-                                                      .withValues(
-                                                          alpha:
-                                                              _glow.value *
-                                                                  0.25),
-                                                  blurRadius: 14,
-                                                  spreadRadius: 1,
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      Image.asset(
-                                        'assets/images/app_icon.png',
-                                        width: logoSize * 0.88,
-                                        height: logoSize * 0.88,
-                                        fit: BoxFit.contain,
-                                        filterQuality: FilterQuality.high,
-                                      ),
-                                    ],
                                   ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                            FadeTransition(
-                              opacity: _fadeIn,
-                              child: Text(
-                                'Taheri Mohalla Jamaat',
-                                textAlign: TextAlign.center,
-                                style: GoogleFonts.inter(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.78),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
+                              );
+                            },
+                          ),
                         ),
-                        ConstrainedBox(
+                      ),
+                      FadeTransition(
+                        opacity: _fadeIn,
+                        child: Text(
+                          'Taheri Mohalla Jamaat',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.cormorantGaramond(
+                            color: AppColors.primary.withValues(alpha: 0.85),
+                            fontSize: constraints.maxWidth < 360 ? 22 : 26,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.6,
+                            height: 1.15,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      FadeTransition(
+                        opacity: _fadeIn,
+                        child: Text(
+                          'Khaitan · Kuwait',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                            color: AppColors.primary.withValues(alpha: 0.55),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      FadeTransition(
+                        opacity: _fadeIn,
+                        child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 420),
                           child: SizedBox(
                             width: double.infinity,
@@ -244,14 +238,14 @@ class _LoginScreenState extends State<LoginScreen>
                                   ? null
                                   : () => _loginWithIts(context),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2E7D32),
+                                backgroundColor: AppColors.primary,
                                 foregroundColor: Colors.white,
                                 disabledBackgroundColor:
-                                    const Color(0xFF2E7D32)
-                                        .withValues(alpha: 0.7),
+                                    AppColors.primary.withValues(alpha: 0.7),
                                 minimumSize: const Size.fromHeight(54),
-                                elevation: 4,
-                                shadowColor: Colors.black45,
+                                elevation: 6,
+                                shadowColor:
+                                    AppColors.primary.withValues(alpha: 0.35),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -266,7 +260,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       ),
                                     )
                                   : Text(
-                                      'Login',
+                                      'Login with ITS',
                                       style: GoogleFonts.inter(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w800,
@@ -276,11 +270,127 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 );
               },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DynamicLogo extends StatelessWidget {
+  const _DynamicLogo({
+    required this.size,
+    required this.glow,
+    required this.ringScale,
+    required this.shimmer,
+  });
+
+  final double size;
+  final double glow;
+  final double ringScale;
+  final double shimmer;
+
+  @override
+  Widget build(BuildContext context) {
+    final ringSize = size * 1.08;
+
+    return SizedBox(
+      width: ringSize,
+      height: ringSize,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer breathing gold ring
+          Transform.scale(
+            scale: ringScale,
+            child: Container(
+              width: size * 0.98,
+              height: size * 0.98,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.accent.withValues(alpha: 0.22 + glow * 0.25),
+                  width: 1.4,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: glow),
+                    blurRadius: 42,
+                    spreadRadius: 2,
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: glow * 0.55),
+                    blurRadius: 18,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Soft disc behind crest
+          Container(
+            width: size * 0.92,
+            height: size * 0.92,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.55),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+          ),
+          // Crest with resolution-aware scaling + light shimmer sweep
+          SizedBox(
+            width: size * 0.86,
+            height: size * 0.86,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  'assets/images/app_icon_foreground.png',
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (_, error, stackTrace) {
+                    return Image.asset(
+                      'assets/images/app_icon.png',
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    );
+                  },
+                ),
+                IgnorePointer(
+                  child: ClipOval(
+                    child: Align(
+                      alignment: Alignment(-1.4 + shimmer * 2.8, -0.15),
+                      child: Container(
+                        width: size * 0.28,
+                        height: size,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                              Colors.white.withValues(alpha: 0),
+                              Colors.white.withValues(alpha: 0.28),
+                              Colors.white.withValues(alpha: 0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

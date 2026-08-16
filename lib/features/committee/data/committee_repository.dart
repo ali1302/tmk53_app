@@ -46,12 +46,23 @@ class CommitteeRepository {
         'Committee/members',
         style: AuthHeaderStyle.none,
       );
-      final parsed = _parse(response);
-      if (parsed.isNotEmpty) return parsed;
+      final list = _parse(response);
+      // Live may still return Admin Members (partners) without photos/posts.
+      // Prefer Contact Us–quality list until the fixed API is uploaded.
+      if (list.isEmpty || !_hasContactUsDetails(list)) {
+        return localMembers();
+      }
+      return list;
     } catch (_) {
-      // Fall through to bundled Contact Us list.
+      // Offline / API not uploaded yet — bundled Contact Us list.
+      return localMembers();
     }
-    return localMembers();
+  }
+
+  bool _hasContactUsDetails(List<CommitteeMember> list) {
+    final withPhoto = list.where((e) => e.photo.isNotEmpty).length;
+    final withPost = list.where((e) => e.post.isNotEmpty).length;
+    return withPhoto >= 5 || withPost >= 5;
   }
 
   List<CommitteeMember> _parse(dynamic response) {
@@ -66,7 +77,7 @@ class CommitteeRepository {
     return raw
         .whereType<Map>()
         .map((e) => CommitteeMember.fromJson(Map<String, dynamic>.from(e)))
-        .where((e) => e.name.isNotEmpty)
+        .where((e) => e.name.isNotEmpty || e.post.isNotEmpty)
         .toList();
   }
 

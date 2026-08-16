@@ -110,10 +110,14 @@ class MenuDrawer extends StatelessWidget {
               icon: Icons.public,
               label: 'TMK Website',
               trailing: Icon(Icons.open_in_new, size: 15, color: AppColors.accent),
-              onTap: () => launchUrl(
-                Uri.parse(AppConfig.websiteUrl),
-                mode: LaunchMode.externalApplication,
-              ),
+              onTap: () async {
+                final auth = context.read<AuthProvider>();
+                final url = AppConfig.websiteSsoUrl(auth.token);
+                await launchUrl(
+                  Uri.parse(url),
+                  mode: LaunchMode.externalApplication,
+                );
+              },
             ),
             Container(height: 1, color: AppColors.accent),
             Padding(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -23,11 +25,13 @@ class HomeScreen extends StatefulWidget {
     required this.onOpenQr,
     this.onOpenQibla,
     this.onOpenBroadcast,
+    this.onOpenContactUs,
   });
 
   final VoidCallback onOpenQr;
   final ValueChanged<String>? onOpenQibla;
   final VoidCallback? onOpenBroadcast;
+  final VoidCallback? onOpenContactUs;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -44,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _locating = false;
   String? _locationError;
   SunTimes? _sunTimes;
+  Timer? _misriTick;
 
   @override
   void initState() {
@@ -52,6 +57,16 @@ class _HomeScreenState extends State<HomeScreen> {
       _load();
       _restoreAndFetchLocation();
     });
+    // Refresh Misri date / رات when Maghrib or Sunrise crosses.
+    _misriTick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _misriTick?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -173,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final home = context.watch<HomeProvider>();
     final details = home.details;
     final dateParts = _parseEnDate(details?.enDate);
-    // Use local Misri (Fatimid) calendar — do not rely on API Kuwaiti/Umm date.
+    // Use local Misri (Fatimid) calendar — advances after Maghrib; رات until Sunrise.
     final hijriDisplay = _formatMisriDate(DateTime.now());
 
     return Column(
@@ -202,6 +217,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: home.isLoading ? null : _load,
                 icon: const Icon(Icons.refresh, color: AppColors.accent, size: 20),
               ),
+              if (widget.onOpenContactUs != null) ...[
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: widget.onOpenContactUs,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.accent.withValues(alpha: 0.15),
+                      border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                    ),
+                    child: const Icon(Icons.phone_in_talk_outlined, size: 18, color: AppColors.accent),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 8),
               InkWell(
                 onTap: widget.onOpenQr,
                 borderRadius: BorderRadius.circular(20),
@@ -276,21 +309,41 @@ class _HomeScreenState extends State<HomeScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Text(
-                                  hijriDisplay.dayArabic,
-                                  style: GoogleFonts.notoNaskhArabic(
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.accent,
-                                    height: 1,
-                                  ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  textDirection: TextDirection.rtl,
+                                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                                  textBaseline: TextBaseline.alphabetic,
+                                  children: [
+                                    Text(
+                                      hijriDisplay.dayArabic,
+                                      style: GoogleFonts.notoNaskhArabic(
+                                        fontSize: 40,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.accent,
+                                        height: 1,
+                                      ),
+                                    ),
+                                    if (hijriDisplay.isRaat) ...[
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'رات',
+                                        style: GoogleFonts.notoNaskhArabic(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.accent,
+                                          height: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   hijriDisplay.monthYearArabic,
                                   textDirection: TextDirection.rtl,
                                   style: GoogleFonts.notoNaskhArabic(
-                                    fontSize: 13,
+                                    fontSize: 18,
                                     color: AppColors.primary,
                                   ),
                                 ),
@@ -387,6 +440,38 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                         ),
+                      if (details != null && details.izanPasses.isNotEmpty)
+                        ...details.izanPasses.map(
+                          (pass) => _InfoCard(
+                            title:
+                                'Your ${details.izanLabel} Pass is available',
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  pass.title.isNotEmpty
+                                      ? pass.title
+                                      : 'Event',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.text,
+                                  ),
+                                ),
+                                if (pass.dateLine.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    pass.dateLine,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.gray500,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
                       if (details?.majlis != null && !details!.majlis!.isEmpty)
                         _InfoCard(
                           title: 'Current Majlis',
@@ -424,12 +509,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                   final notify = details!.notify!;
                                   final isNew =
                                       !context.watch<BroadcastProvider>().isRead(notify.id);
-                                  return InkWell(
-                                    onTap: () async {
-                                      await showBroadcastDetailSheet(context, notify);
-                                      widget.onOpenBroadcast?.call();
-                                    },
-                                    child: _NotifyBlock(item: notify, showNew: isNew),
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      InkWell(
+                                        onTap: () async {
+                                          await showBroadcastDetailSheet(context, notify);
+                                          widget.onOpenBroadcast?.call();
+                                        },
+                                        child: _NotifyBlock(
+                                          item: notify,
+                                          showNew: isNew,
+                                          showMedia: false,
+                                        ),
+                                      ),
+                                      if (notify.hasMedia) ...[
+                                        const SizedBox(height: 8),
+                                        BroadcastMediaView(item: notify, compact: true),
+                                      ],
+                                      if (notify.hasLink) ...[
+                                        const SizedBox(height: 8),
+                                        BroadcastLinkButton(item: notify),
+                                      ],
+                                    ],
                                   );
                                 },
                               ),
@@ -443,28 +545,30 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  static const _misriMonthsAr = [
-    'محرم الحرام',
-    'صفر',
-    'ربيع الأول',
-    'ربيع الثاني',
-    'جمادى الأولى',
-    'جمادى الآخرة',
-    'رجب',
-    'شعبان',
-    'رمضان',
-    'شوال',
-    'ذو القعدة',
-    'ذو الحجة',
-  ];
-
-  _HijriDisplay _formatMisriDate(DateTime date) {
-    final misri = MisriDate.fromGregorian(date);
-    final monthAr = _misriMonthsAr[misri.month - 1];
+  _HijriDisplay _formatMisriDate(DateTime now) {
+    final times = _sunTimes ?? _sunTimesService.forKuwait(date: now);
+    final MisriDate misri;
+    final bool raat;
+    if (times != null) {
+      misri = MisriDate.fromGregorianAt(
+        now: now,
+        maghrib: times.maghrib,
+      );
+      raat = MisriDate.isRaat(
+        now: now,
+        sunrise: times.sunrise,
+        maghrib: times.maghrib,
+      );
+    } else {
+      misri = MisriDate.fromGregorian(now);
+      raat = false;
+    }
+    final monthAr = MisriDate.monthNamesAr[misri.month - 1];
     final yearAr = _toArabicDigits('${misri.year}هـ');
     return _HijriDisplay(
       dayArabic: _toArabicDigits('${misri.day}'),
       monthYearArabic: '$monthAr $yearAr',
+      isRaat: raat,
     );
   }
 
@@ -527,15 +631,22 @@ class _HijriDisplay {
   const _HijriDisplay({
     required this.dayArabic,
     required this.monthYearArabic,
+    this.isRaat = false,
   });
   final String dayArabic;
   final String monthYearArabic;
+  final bool isRaat;
 }
 
 class _NotifyBlock extends StatelessWidget {
-  const _NotifyBlock({required this.item, this.showNew = true});
+  const _NotifyBlock({
+    required this.item,
+    this.showNew = true,
+    this.showMedia = true,
+  });
   final BroadcastItem item;
   final bool showNew;
+  final bool showMedia;
 
   @override
   Widget build(BuildContext context) {
@@ -576,13 +687,17 @@ class _NotifyBlock extends StatelessWidget {
               const SizedBox(height: 2),
               Text(item.date, style: const TextStyle(fontSize: 10, color: AppColors.gray400)),
               const SizedBox(height: 6),
-              Text(
-                item.displayBody,
+              BroadcastBodyText(
+                text: item.displayBody,
                 style: const TextStyle(fontSize: 12, color: Color(0xFF374151), height: 1.4),
               ),
-              if (item.hasMedia) ...[
+              if (showMedia && item.hasMedia) ...[
                 const SizedBox(height: 8),
                 BroadcastMediaView(item: item, compact: true),
+              ],
+              if (showMedia && item.hasLink) ...[
+                const SizedBox(height: 8),
+                BroadcastLinkButton(item: item),
               ],
             ],
           ),

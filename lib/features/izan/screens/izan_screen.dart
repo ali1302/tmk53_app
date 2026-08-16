@@ -51,9 +51,16 @@ class _IzanScreenState extends State<IzanScreen> {
     if (!mounted) return;
     final card = izan.cards.where((c) => c.id == majlisId).toList();
     final msg = ok
-        ? (izan.successMessage ?? 'Saved')
-        : (card.isNotEmpty ? (card.first.errorMessage ?? 'Failed') : 'Failed');
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ? (izan.successMessage ?? 'Registered Successfully')
+        : (card.isNotEmpty
+            ? (card.first.errorMessage ?? 'Unable to save registration.')
+            : 'Unable to save registration.');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: ok ? const Color(0xFF166534) : const Color(0xFFB91C1C),
+      ),
+    );
   }
 
   Future<void> _showAddGuest(String majlisId) async {
@@ -192,6 +199,8 @@ class _IzanScreenState extends State<IzanScreen> {
                             for (final card in izan.cards) ...[
                               _EventCard(
                                 card: card,
+                                izanLabel: screenTitle,
+                                loggedInIts: auth.itsId ?? '',
                                 onToggle: (its, v) =>
                                     izan.toggleMember(card.id, its, v),
                                 onAddGuest: () => _showAddGuest(card.id),
@@ -258,6 +267,8 @@ class _EmptyCard extends StatelessWidget {
 class _EventCard extends StatelessWidget {
   const _EventCard({
     required this.card,
+    required this.izanLabel,
+    required this.loggedInIts,
     required this.onToggle,
     required this.onAddGuest,
     required this.onRemoveGuest,
@@ -265,14 +276,31 @@ class _EventCard extends StatelessWidget {
   });
 
   final IzanEventCard card;
+  final String izanLabel;
+  final String loggedInIts;
   final void Function(String its, bool value) onToggle;
   final VoidCallback onAddGuest;
   final void Function(int index) onRemoveGuest;
   final VoidCallback onSave;
 
+  bool get _userRegistered {
+    final its = loggedInIts.trim();
+    if (its.isEmpty) {
+      return card.members.any((m) => m.registered);
+    }
+    final self = card.members.where((m) => m.its.trim() == its);
+    if (self.isNotEmpty) {
+      return self.any((m) => m.registered);
+    }
+    // HOF-only view may hide other members; treat any registered member as yes.
+    return card.members.any((m) => m.registered) ||
+        card.familyAll.any((m) => m.its.trim() == its && m.registered);
+  }
+
   @override
   Widget build(BuildContext context) {
     final event = card.event;
+    final alreadyRegistered = _userRegistered;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -286,12 +314,14 @@ class _EventCard extends StatelessWidget {
           ),
         ],
       ),
-      child: card.isLoading
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          : Column(
+      child: Material(
+        color: Colors.transparent,
+        child: card.isLoading
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -313,6 +343,43 @@ class _EventCard extends StatelessWidget {
                     color: AppColors.gray500,
                   ),
                 ),
+                if (alreadyRegistered) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Your $izanLabel Pass is available',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF166534),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'You are already registered',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF166534),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 if (card.errorMessage != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -423,14 +490,17 @@ class _EventCard extends StatelessWidget {
                             height: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text(
-                            'Save Registration',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                        : Text(
+                            alreadyRegistered
+                                ? 'Update Registration'
+                                : 'Save Registration',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
                           ),
                   ),
                 ),
               ],
             ),
+      ),
     );
   }
 }

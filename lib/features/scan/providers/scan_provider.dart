@@ -48,24 +48,28 @@ class ScanProvider extends ChangeNotifier {
     lastScannedName = null;
     lastScannedIts = null;
     lastScanAlreadyScanned = false;
-    if (event.category == 'Majlis') {
-      counts = await _repository.getMajlisCounts(token: token, majlisId: event.id);
-      scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
-    } else if (event.category == 'Sabaq') {
-      eligibleCount = await _repository.getSabaqEligibleCount(
-        token: token,
-        sabaqId: event.id,
-      );
-      scannedUsers = const [];
-    } else if (event.category == 'Asbaq') {
-      eligibleCount = await _repository.getAsbaqEligibleCount(
-        token: token,
-        asbaqId: event.id,
-      );
-      counts = await _repository.getAsbaqCounts(token: token, asbaqId: event.id);
-      scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
-    } else {
-      scannedUsers = const [];
+    try {
+      if (event.category == 'Majlis') {
+        counts = await _repository.getMajlisCounts(token: token, majlisId: event.id);
+        scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
+      } else if (event.category == 'Sabaq') {
+        eligibleCount = await _repository.getSabaqEligibleCount(
+          token: token,
+          sabaqId: event.id,
+        );
+        scannedUsers = const [];
+      } else if (event.category == 'Asbaq') {
+        eligibleCount = await _repository.getAsbaqEligibleCount(
+          token: token,
+          asbaqId: event.id,
+        );
+        counts = await _repository.getAsbaqCounts(token: token, asbaqId: event.id);
+        scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
+      } else {
+        scannedUsers = const [];
+      }
+    } catch (_) {
+      // Keep prior list if refresh fails.
     }
     notifyListeners();
   }
@@ -193,14 +197,15 @@ class ScanProvider extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
 
+    final previous = List<ScannedUser>.from(scannedUsers);
     try {
       lastScanMessage = await _repository.removeScan(
         token: token,
         event: event,
         its: its,
       );
-      scannedUsers = scannedUsers.where((u) => u.its != its).toList();
 
+      // Only update UI after server confirms, then re-sync from server.
       if (event.category == 'Majlis') {
         counts = await _repository.getMajlisCounts(token: token, majlisId: event.id);
         scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
@@ -211,14 +216,25 @@ class ScanProvider extends ChangeNotifier {
         );
         counts = await _repository.getAsbaqCounts(token: token, asbaqId: event.id);
         scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
+      } else {
+        scannedUsers = previous.where((u) => u.its != its).toList();
+      }
+
+      if (scannedUsers.any((u) => u.its == its)) {
+        scannedUsers = previous;
+        errorMessage = 'Server still has this ITS. Remove failed.';
+        lastScanMessage = errorMessage;
+        return false;
       }
 
       return true;
     } on ApiException catch (e) {
+      scannedUsers = previous;
       errorMessage = e.message;
       lastScanMessage = e.message;
       return false;
     } catch (_) {
+      scannedUsers = previous;
       errorMessage = 'Unable to remove scan.';
       lastScanMessage = errorMessage;
       return false;

@@ -1,11 +1,10 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../core/models/app_models.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/broadcast_provider.dart';
+import 'broadcast_attachment_viewer.dart';
 import 'package:provider/provider.dart';
 
 Future<void> showBroadcastDetailSheet(
@@ -64,8 +63,8 @@ Future<void> showBroadcastDetailSheet(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (item.displayBody.isNotEmpty)
-                          Text(
-                            item.displayBody,
+                          BroadcastBodyText(
+                            text: item.displayBody,
                             style: const TextStyle(
                               fontSize: 14,
                               color: Color(0xFF374151),
@@ -75,6 +74,11 @@ Future<void> showBroadcastDetailSheet(
                         if (item.hasMedia) ...[
                           if (item.displayBody.isNotEmpty) const SizedBox(height: 14),
                           BroadcastMediaView(item: item),
+                        ],
+                        if (item.hasLink) ...[
+                          if (item.displayBody.isNotEmpty || item.hasMedia)
+                            const SizedBox(height: 14),
+                          BroadcastLinkButton(item: item),
                         ],
                       ],
                     ),
@@ -103,171 +107,325 @@ class BroadcastMediaView extends StatelessWidget {
   final BroadcastItem item;
   final bool compact;
 
+  Future<void> _openInApp(BuildContext context) async {
+    final url = item.mediaUrl;
+    if (url == null) return;
+    if (item.isPdf) {
+      await openBroadcastAttachment(
+        context,
+        url: url,
+        kind: BroadcastAttachmentKind.pdf,
+        title: 'PDF',
+      );
+      return;
+    }
+    if (item.isImage) {
+      await openBroadcastAttachment(
+        context,
+        url: url,
+        kind: BroadcastAttachmentKind.image,
+        title: 'Image',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final url = item.mediaUrl;
     if (url == null) return const SizedBox.shrink();
 
     if (item.isImage) {
-      return _ImageBlock(url: url, compact: compact);
+      return _AttachmentCard(
+        compact: compact,
+        icon: Icons.image_outlined,
+        iconColor: AppColors.primary,
+        title: 'Image attachment',
+        buttonLabel: 'View Image',
+        preview: compact
+            ? null
+            : _ImagePreview(
+                url: url,
+                onTap: () => _openInApp(context),
+              ),
+        onView: () => _openInApp(context),
+      );
     }
+
     if (item.isPdf) {
-      return _PdfBlock(url: url, compact: compact);
+      return _AttachmentCard(
+        compact: compact,
+        icon: Icons.picture_as_pdf,
+        iconColor: const Color(0xFFB91C1C),
+        title: 'PDF attachment',
+        buttonLabel: 'View PDF',
+        onView: () => _openInApp(context),
+      );
     }
+
     if (item.isVideo) {
-      return _OpenLinkBlock(
+      return _OpenExternalLinkBlock(
         label: compact ? 'Video' : 'Open video',
         icon: Icons.play_circle_outline,
         url: url,
       );
     }
+
     return const SizedBox.shrink();
   }
 }
 
-class _ImageBlock extends StatelessWidget {
-  const _ImageBlock({required this.url, required this.compact});
+class BroadcastLinkButton extends StatelessWidget {
+  const BroadcastLinkButton({super.key, required this.item});
 
-  final String url;
-  final bool compact;
+  final BroadcastItem item;
 
   @override
   Widget build(BuildContext context) {
-    final height = compact ? 120.0 : 280.0;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: height,
-          minWidth: double.infinity,
-        ),
-        child: Image.network(
-          url,
-          fit: BoxFit.contain,
-          width: double.infinity,
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return SizedBox(
-              height: height,
-              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            );
-          },
-          errorBuilder: (_, error, stackTrace) => _OpenLinkBlock(
-            label: 'Open image',
-            icon: Icons.image_outlined,
-            url: url,
-          ),
-        ),
-      ),
+    final url = item.linkUrl;
+    if (url == null) return const SizedBox.shrink();
+    return _OpenExternalLinkBlock(
+      label: item.linkLabel,
+      icon: Icons.link,
+      url: url,
     );
   }
 }
 
-class _PdfBlock extends StatefulWidget {
-  const _PdfBlock({required this.url, required this.compact});
+class BroadcastBodyText extends StatelessWidget {
+  const BroadcastBodyText({
+    super.key,
+    required this.text,
+    required this.style,
+  });
 
-  final String url;
-  final bool compact;
+  final String text;
+  final TextStyle style;
 
-  @override
-  State<_PdfBlock> createState() => _PdfBlockState();
-}
+  static final _urlRegex = RegExp(
+    r'(https?:\/\/[^\s<>"{}|\\^`\[\]]+|www\.[^\s<>"{}|\\^`\[\]]+)',
+    caseSensitive: false,
+  );
 
-class _PdfBlockState extends State<_PdfBlock> {
-  WebViewController? _controller;
-  var _loading = true;
-  var _failed = false;
-
-  bool get _canUseWebView {
-    if (kIsWeb) return false;
-    return defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (!_canUseWebView) {
-      _loading = false;
-      return;
+  Future<void> _open(String raw) async {
+    var value = raw.trim();
+    while (value.endsWith('.') || value.endsWith(',') || value.endsWith(')')) {
+      value = value.substring(0, value.length - 1);
     }
-    final controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) {
-            if (mounted) setState(() => _loading = false);
-          },
-          onWebResourceError: (_) {
-            if (mounted) {
-              setState(() {
-                _loading = false;
-                _failed = true;
-              });
-            }
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
-    _controller = controller;
+    if (!value.startsWith('http://') && !value.startsWith('https://')) {
+      value = 'https://$value';
+    }
+    final uri = Uri.tryParse(value);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
   Widget build(BuildContext context) {
-    final height = widget.compact ? 140.0 : 360.0;
+    final matches = _urlRegex.allMatches(text).toList();
+    if (matches.isEmpty) {
+      return Text(text, style: style);
+    }
 
-    if (!_canUseWebView || _failed || _controller == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: widget.compact ? 88 : 120,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF3F4F6),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
+    final spans = <InlineSpan>[];
+    var cursor = 0;
+    for (final match in matches) {
+      if (match.start > cursor) {
+        spans.add(TextSpan(text: text.substring(cursor, match.start)));
+      }
+      final urlText = match.group(0)!;
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: GestureDetector(
+            onTap: () => _open(urlText),
+            child: Text(
+              urlText,
+              style: style.copyWith(
+                color: const Color(0xFF1D4ED8),
+                decoration: TextDecoration.underline,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            child: const Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          ),
+        ),
+      );
+      cursor = match.end;
+    }
+    if (cursor < text.length) {
+      spans.add(TextSpan(text: text.substring(cursor)));
+    }
+
+    return Text.rich(TextSpan(style: style, children: spans));
+  }
+}
+
+class _AttachmentCard extends StatelessWidget {
+  const _AttachmentCard({
+    required this.compact,
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.buttonLabel,
+    required this.onView,
+    this.preview,
+  });
+
+  final bool compact;
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String buttonLabel;
+  final VoidCallback onView;
+  final Widget? preview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (preview != null) ...[
+          preview!,
+          const SizedBox(height: 10),
+        ],
+        Material(
+          color: const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onView,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: compact ? 10 : 12,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: iconColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1F2937),
+                      ),
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: onView,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: Icon(
+                      icon == Icons.picture_as_pdf
+                          ? Icons.picture_as_pdf
+                          : Icons.visibility_outlined,
+                      size: 16,
+                    ),
+                    label: Text(buttonLabel),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ImagePreview extends StatelessWidget {
+  const _ImagePreview({required this.url, required this.onTap});
+
+  final String url;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxHeight: 220,
+              minWidth: double.infinity,
+            ),
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                Icon(Icons.picture_as_pdf, size: 36, color: Color(0xFFB91C1C)),
-                SizedBox(height: 6),
-                Text('PDF attachment', style: TextStyle(fontSize: 13)),
+                Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const SizedBox(
+                      height: 160,
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  },
+                  errorBuilder: (_, error, stackTrace) {
+                    return Container(
+                      height: 120,
+                      color: const Color(0xFFF3F4F6),
+                      alignment: Alignment.center,
+                      child: const Text('Image preview unavailable'),
+                    );
+                  },
+                ),
+                Positioned(
+                  right: 8,
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.zoom_in, size: 14, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text(
+                          'Tap to view',
+                          style: TextStyle(color: Colors.white, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          _OpenLinkBlock(
-            label: 'View PDF',
-            icon: Icons.picture_as_pdf,
-            url: widget.url,
-          ),
-        ],
-      );
-    }
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        height: height,
-        child: Stack(
-          children: [
-            WebViewWidget(controller: _controller!),
-            if (_loading)
-              const ColoredBox(
-                color: Colors.white,
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              ),
-          ],
         ),
       ),
     );
   }
 }
 
-class _OpenLinkBlock extends StatelessWidget {
-  const _OpenLinkBlock({
+class _OpenExternalLinkBlock extends StatelessWidget {
+  const _OpenExternalLinkBlock({
     required this.label,
     required this.icon,
     required this.url,

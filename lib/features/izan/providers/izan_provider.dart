@@ -105,6 +105,7 @@ class IzanProvider extends ChangeNotifier {
               ? detail.majlis!.hijriDate
               : prev.hijriDate,
           onlyHof: detail.onlyHof || detail.majlis!.onlyHof || prev.onlyHof,
+          passStatus: detail.majlis!.passStatus || prev.passStatus,
         );
       } else if (detail.onlyHof) {
         final prev = next[i].event;
@@ -114,6 +115,7 @@ class IzanProvider extends ChangeNotifier {
           date: prev.date,
           hijriDate: prev.hijriDate,
           onlyHof: true,
+          passStatus: prev.passStatus,
         );
       }
       final onlyHof = next[i].event.onlyHof || detail.onlyHof;
@@ -135,6 +137,7 @@ class IzanProvider extends ChangeNotifier {
             date: prev.date,
             hijriDate: prev.hijriDate,
             onlyHof: true,
+            passStatus: prev.passStatus,
           );
         }
       } else {
@@ -217,6 +220,18 @@ class IzanProvider extends ChangeNotifier {
     final card = _card(majlisId);
     if (card == null) return false;
 
+    if (card.members.isEmpty) {
+      final i = cards.indexWhere((c) => c.id == majlisId);
+      if (i >= 0) {
+        final next = List<IzanEventCard>.from(cards);
+        next[i].errorMessage =
+            'Family members not loaded. Pull to refresh, then try again.';
+        cards = next;
+        notifyListeners();
+      }
+      return false;
+    }
+
     final i = cards.indexWhere((c) => c.id == majlisId);
     final next = List<IzanEventCard>.from(cards);
     next[i].isSaving = true;
@@ -230,13 +245,15 @@ class IzanProvider extends ChangeNotifier {
       final Map<String, bool> selections;
       if (onlyHof) {
         final hofRegistered = card.members.any((m) => m.registered);
-        final hofIts = card.members.isNotEmpty ? card.members.first.its : '';
+        final hofIts = card.members.isNotEmpty ? card.members.first.its.trim() : '';
         selections = {
           for (final m in card.familyAll)
-            m.its: (m.isHof || m.its == hofIts) && hofRegistered,
+            m.its.trim(): (m.isHof || m.its.trim() == hofIts) && hofRegistered,
         };
       } else {
-        selections = {for (final m in card.members) m.its: m.registered};
+        selections = {
+          for (final m in card.members) m.its.trim(): m.registered,
+        };
       }
       final message = await _repository.register(
         token: token,
@@ -247,6 +264,51 @@ class IzanProvider extends ChangeNotifier {
       );
       successMessage = message;
       await _loadCardDetail(token: token, itsId: itsId, majlisId: majlisId);
+
+      // Confirm checked members actually persisted as registered.
+      final verified = _card(majlisId);
+      if (verified != null) {
+        final expected = selections.entries
+            .where((e) => e.value)
+            .map((e) => e.key.trim())
+            .toSet();
+        if (expected.isNotEmpty) {
+          final registeredNow = verified.members
+              .where((m) => m.registered)
+              .map((m) => m.its.trim())
+              .toSet();
+          final missing = expected.difference(registeredNow);
+          if (missing.isNotEmpty) {
+            // One more reload — race / stale parse after save.
+            await _loadCardDetail(
+              token: token,
+              itsId: itsId,
+              majlisId: majlisId,
+            );
+            final again = _card(majlisId);
+            final registeredRetry = again == null
+                ? <String>{}
+                : again.members
+                    .where((m) => m.registered)
+                    .map((m) => m.its.trim())
+                    .toSet();
+            final stillMissing = expected.difference(registeredRetry);
+            if (stillMissing.isNotEmpty) {
+              final j = cards.indexWhere((c) => c.id == majlisId);
+              if (j >= 0) {
+                final after = List<IzanEventCard>.from(cards);
+                after[j].isSaving = false;
+                after[j].errorMessage =
+                    'Save did not complete on server. Please try again.';
+                cards = after;
+              }
+              successMessage = null;
+              return false;
+            }
+          }
+        }
+      }
+
       final j = cards.indexWhere((c) => c.id == majlisId);
       if (j >= 0) {
         final after = List<IzanEventCard>.from(cards);

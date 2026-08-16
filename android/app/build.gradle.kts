@@ -4,6 +4,8 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val googleServicesFile = file("google-services.json")
+
 android {
     namespace = "com.tmkkuwait.tmk_kuwait"
     compileSdk = flutter.compileSdkVersion
@@ -42,4 +44,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// Apply only when Firebase Android config is present (avoids hard build break).
+if (googleServicesFile.exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }

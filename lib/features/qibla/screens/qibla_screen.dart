@@ -227,8 +227,8 @@ class _QiblaScreenState extends State<QiblaScreen> {
                               ),
                               child: Text(
                                 kIsWeb
-                                    ? 'On web, compass heading may be unavailable. Use the Kaaba marker relative to north, or open this screen on a phone for live compass.'
-                                    : 'Hold your phone flat and turn until the Kaaba marker aligns with the top arrow.',
+                                    ? 'On web, compass heading may be unavailable. Open this screen on a phone for a live arrow.'
+                                    : 'Hold your phone flat and turn until the arrow points up to the Kaaba.',
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   fontSize: 12,
@@ -309,189 +309,132 @@ class _CompassDial extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Rotate dial so north tracks device; Kaaba stays at absolute bearing.
-    final dialRotation =
+    // Kaaba stays fixed at top. Arrow rotates toward it.
+    // When relative ≈ 0, device faces Qibla and arrow points up at Kaaba.
+    final relative = deviceHeading != null
+        ? QiblaService.shortestAngle(deviceHeading!, qiblaBearing)
+        : 0.0;
+    final arrowAngle = relative * math.pi / 180;
+    // Cardinal letters track true north (rotate opposite to device heading).
+    final cardinalRotation =
         deviceHeading != null ? -deviceHeading! * math.pi / 180 : 0.0;
-    final kaabaAngle = qiblaBearing * math.pi / 180;
     final arrowColor = aligned ? AppColors.success : AppColors.primary;
 
-    return SizedBox(
-      width: 280,
-      height: 280,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Fixed top indicator — direction the device is facing
-          const Positioned(
-            top: 0,
-            child: _FacingArrow(),
-          ),
-          Transform.rotate(
-            angle: dialRotation,
-            child: Container(
-              width: 236,
-              height: 236,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.white,
-                border: Border.all(
-                  color: aligned ? AppColors.success : AppColors.accent,
-                  width: 3,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Fixed Kaaba target — does not move with compass.
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            color: AppColors.accent,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.accent.withValues(alpha: 0.4),
+                blurRadius: 10,
               ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  for (final entry in const [
-                    (0.0, 'N'),
-                    (90.0, 'E'),
-                    (180.0, 'S'),
-                    (270.0, 'W'),
-                  ])
-                    Transform.rotate(
-                      angle: entry.$1 * math.pi / 180,
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 14),
-                          child: Transform.rotate(
-                            angle: -entry.$1 * math.pi / 180,
-                            child: Text(
-                              entry.$2,
-                              style: TextStyle(
-                                fontSize: entry.$2 == 'N' ? 16 : 13,
-                                fontWeight: FontWeight.w800,
-                                color: entry.$2 == 'N'
-                                    ? AppColors.primary
-                                    : AppColors.gray500,
+            ],
+          ),
+          alignment: Alignment.center,
+          child: const KaabaIcon(size: 34),
+        ),
+        // Extra space between Qibla symbol and compass dial.
+        const SizedBox(height: 28),
+        Container(
+          width: 236,
+          height: 236,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+            border: Border.all(
+              color: aligned ? AppColors.success : AppColors.accent,
+              width: 3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CustomPaint(
+                size: const Size(236, 236),
+                painter: _TickPainter(),
+              ),
+              // N / E / S / W — geographic directions.
+              Transform.rotate(
+                angle: cardinalRotation,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    for (final entry in const [
+                      (0.0, 'N'),
+                      (90.0, 'E'),
+                      (180.0, 'S'),
+                      (270.0, 'W'),
+                    ])
+                      Transform.rotate(
+                        angle: entry.$1 * math.pi / 180,
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Transform.rotate(
+                              // Keep letters upright on screen.
+                              angle: -entry.$1 * math.pi / 180 - cardinalRotation,
+                              child: Text(
+                                entry.$2,
+                                style: TextStyle(
+                                  fontSize: entry.$2 == 'N' ? 18 : 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: entry.$2 == 'N'
+                                      ? AppColors.primary
+                                      : AppColors.gray500,
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  // Tick marks
-                  CustomPaint(
-                    size: const Size(236, 236),
-                    painter: _TickPainter(),
-                  ),
-                  // Qibla direction arrow (needle from center → Kaaba)
-                  Transform.rotate(
-                    angle: kaabaAngle,
-                    child: CustomPaint(
-                      size: const Size(236, 236),
-                      painter: _QiblaArrowPainter(color: arrowColor),
-                    ),
-                  ),
-                  // Kaaba marker at qibla bearing
-                  Transform.rotate(
-                    angle: kaabaAngle,
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 22),
-                        child: Transform.rotate(
-                          angle: -kaabaAngle,
-                          child: Container(
-                            width: 42,
-                            height: 42,
-                            decoration: BoxDecoration(
-                              color: AppColors.accent,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.accent.withValues(alpha: 0.4),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                            alignment: Alignment.center,
-                            child: const KaabaIcon(size: 30),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Center pivot
-                  Container(
-                    width: 14,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: arrowColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 4,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              // Only the Qibla arrow moves relative to Kaaba.
+              Transform.rotate(
+                angle: arrowAngle,
+                child: CustomPaint(
+                  size: const Size(236, 236),
+                  painter: _QiblaArrowPainter(color: arrowColor),
+                ),
+              ),
+              // Center pivot
+              Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: arrowColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Fixed arrow at the top of the dial = phone facing direction.
-class _FacingArrow extends StatelessWidget {
-  const _FacingArrow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        CustomPaint(
-          size: const Size(28, 22),
-          painter: _TriangleArrowPainter(color: AppColors.primary),
-        ),
-        Container(
-          width: 3,
-          height: 8,
-          color: AppColors.primary,
         ),
       ],
     );
-  }
-}
-
-class _TriangleArrowPainter extends CustomPainter {
-  _TriangleArrowPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path()
-      ..moveTo(size.width / 2, 0)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.fill,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _TriangleArrowPainter oldDelegate) {
-    return oldDelegate.color != color;
   }
 }
 

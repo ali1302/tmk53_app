@@ -95,26 +95,70 @@ class MisriDate {
     return fromJulianDay(jd);
   }
 
+  /// Misri civil day starts at Maghrib.
+  ///
+  /// - After Maghrib → next Misri date (رات until Sunrise)
+  /// - After Sunrise until Maghrib → same Misri date, without رات
+  /// - Before Sunrise → Misri date of the night that began at previous Maghrib, with رات
+  static MisriDate fromGregorianAt({
+    required DateTime now,
+    required DateTime maghrib,
+  }) {
+    final civil = DateTime(now.year, now.month, now.day);
+    if (!now.isBefore(maghrib)) {
+      // Maghrib has passed — Misri date advances.
+      return MisriDate.fromGregorian(civil.add(const Duration(days: 1)));
+    }
+    return MisriDate.fromGregorian(civil);
+  }
+
+  /// True from Maghrib until Sunrise (Islamic night / رات).
+  static bool isRaat({
+    required DateTime now,
+    required DateTime sunrise,
+    required DateTime maghrib,
+  }) {
+    return !now.isBefore(maghrib) || now.isBefore(sunrise);
+  }
+
   DateTime toGregorian() => julianDayToGregorian(julianDay);
 
   static const monthNames = [
-    'Muharram',
-    'Safar',
-    'Rabi ul Awwal',
-    'Rabi ul Aakhar',
-    'Jumadil Ula',
-    'Jumadil Ukhra',
-    'Rajab',
-    'Shaabaan',
-    'Ramadan',
-    'Shawwal',
-    'Zilqadah',
-    'Zilhijjah',
+    'Shehre Moharramul Haram',
+    'Safarul Muzaffar',
+    'Rabiul Awwal',
+    'Rabiul Akhar',
+    'Jamadal Ula',
+    'Jamadal Ukhra',
+    'Shehre Rajabul Asab',
+    'Shabanul Karim',
+    'Shehre Ramazanul Moazzam',
+    'Shawwalul Mukarram',
+    'Zilqadatil Haram',
+    'Zilhijjatil Haram',
   ];
 
-  /// Display like API: "27, Safar, 1448H"
+  static const monthNamesAr = [
+    'شهر محرم الحرام',
+    'صفر المظفر',
+    'ربيع الأول',
+    'ربيع الآخر',
+    'جمادى الأولى',
+    'جمادى الآخرة',
+    'شهر رجب الأصب',
+    'شعبان الكريم',
+    'شهر رمضان المعظم',
+    'شوال المكرم',
+    'ذي القعدة الحرام',
+    'ذي الحجة الحرام',
+  ];
+
+  /// Display like API: "27, Safarul Muzaffar, 1448H"
   String get displayLabel =>
       '$day, ${monthNames[month - 1]}, ${year}H';
+
+  String get displayLabelAr =>
+      '$day ${monthNamesAr[month - 1]} $year';
 
   /// Parse common majlis Gregorian strings from API (e.g. "10-August-2026").
   static DateTime? tryParseGregorian(String raw) {

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Tmk Kuwait</string>
+	<string>TMK 53</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -38,11 +38,18 @@
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>TMK Kuwait needs camera access to scan ITS QR codes during event check-in.</string>
+	<string>TMK 53 needs camera access to scan ITS QR codes during event check-in.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TMK Kuwait uses your location to show where you are logged in from.</string>
+	<string>TMK 53 uses your location to show where you are logged in from.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>TMK Kuwait uses your location to show where you are logged in from.</string>
+	<string>TMK 53 uses your location to show where you are logged in from.</string>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

@@ -34,16 +34,20 @@ class IzanMember {
   }
 
   factory IzanMember.fromJson(Map<String, dynamic> json, {bool? registered}) {
+    final its = '${json['ejamaat_id'] ?? json['its'] ?? ''}'.trim();
+    final hofId = '${json['hof_id'] ?? ''}'.trim();
+    final rawReg = json['registered'];
+    final fromRow = rawReg == true ||
+        rawReg == 1 ||
+        '$rawReg' == '1' ||
+        '$rawReg' == 'true';
     return IzanMember(
-      its: '${json['ejamaat_id'] ?? json['its'] ?? ''}',
-      name: '${json['its_name'] ?? json['name'] ?? ''}',
-      gender: '${json['gender'] ?? ''}',
-      misaq: '${json['misaq'] ?? ''}',
-      hofId: '${json['hof_id'] ?? ''}',
-      registered: registered ??
-          json['registered'] == true ||
-              json['registered'] == 1 ||
-              '${json['registered']}' == 'true',
+      its: its,
+      name: '${json['its_name'] ?? json['name'] ?? ''}'.trim(),
+      gender: '${json['gender'] ?? ''}'.trim(),
+      misaq: '${json['misaq'] ?? ''}'.trim(),
+      hofId: hofId,
+      registered: registered ?? fromRow,
     );
   }
 }
@@ -166,6 +170,7 @@ class IzanRepository {
               date: m.date,
               hijriDate: m.hijriDate,
               onlyHof: true,
+              passStatus: m.passStatus || homeMajlis.passStatus,
             )
           else
             m,
@@ -180,24 +185,29 @@ class IzanRepository {
     required String itsId,
     required String majlisId,
   }) async {
+    // Prefer legacy first — deployed on live and does not require JWT.
+    // v1 Majlis/users often returns "failed" when the token cookie is missing.
     try {
-      final response = await _api.get(
-        'Majlis/users/$majlisId',
-        token: token,
-        style: AuthHeaderStyle.xJwtToken,
+      final legacy = await _api.post(
+        'get_majlis_user/$majlisId',
+        fields: {'ejamaat_id': itsId.trim()},
+        legacy: true,
+        style: AuthHeaderStyle.none,
       );
-      return _parseDetail(response);
+      final detail = _parseDetail(legacy);
+      if (detail.members.isNotEmpty) {
+        return detail;
+      }
     } on ApiException {
-      // Fall through.
+      // Fall through to v1.
     }
 
-    final legacy = await _api.post(
-      'get_majlis_user/$majlisId',
-      fields: {'ejamaat_id': itsId},
-      legacy: true,
-      style: AuthHeaderStyle.none,
+    final response = await _api.get(
+      'Majlis/users/$majlisId',
+      token: token,
+      style: AuthHeaderStyle.xJwtToken,
     );
-    return _parseDetail(legacy);
+    return _parseDetail(response);
   }
 
   Future<String> register({
@@ -207,41 +217,45 @@ class IzanRepository {
     required Map<String, bool> selections,
     required List<IzanGuest> guests,
   }) async {
+    // Always send ITS keys as plain strings so PHP lookup matches DB values.
     final dataMap = <String, dynamic>{
-      for (final e in selections.entries) e.key: e.value ? 1 : 0,
-      'mid': majlisId,
+      for (final e in selections.entries)
+        e.key.trim(): e.value ? 1 : 0,
+      'mid': majlisId.trim(),
     };
     final dataJson = jsonEncode(dataMap);
     final guestsJson = jsonEncode(guests.map((g) => g.toJson()).toList());
 
+    // Prefer legacy endpoint first — it is deployed on live and proven for RSVP.
+    // Fall back to v1 Majlis/register when legacy is unavailable.
     try {
-      final response = await _api.post(
-        'Majlis/register/$majlisId',
-        token: token,
-        style: AuthHeaderStyle.xJwtToken,
+      final legacy = await _api.post(
+        'majlis_registrations/$majlisId',
         fields: {
+          'ejamaat_id': itsId.trim(),
           'data': dataJson,
           'guests': guestsJson,
         },
+        legacy: true,
+        style: AuthHeaderStyle.none,
         allowPlainText: true,
       );
-      return _messageFrom(response, fallback: 'Registered Successfully');
+      return _messageFrom(legacy, fallback: 'Registered Successfully');
     } on ApiException {
-      // Fall through to legacy.
+      // Fall through to v1.
     }
 
-    final legacy = await _api.post(
-      'majlis_registrations/$majlisId',
+    final response = await _api.post(
+      'Majlis/register/$majlisId',
+      token: token,
+      style: AuthHeaderStyle.xJwtToken,
       fields: {
-        'ejamaat_id': itsId,
         'data': dataJson,
         'guests': guestsJson,
       },
-      legacy: true,
-      style: AuthHeaderStyle.none,
       allowPlainText: true,
     );
-    return _messageFrom(legacy, fallback: 'Registered Successfully');
+    return _messageFrom(response, fallback: 'Registered Successfully');
   }
 
   List<MajlisItem> _parseMajlisList(dynamic response) {
@@ -268,8 +282,8 @@ class IzanRepository {
     final rawReg = map['register_ids'];
     if (rawReg is Map) {
       rawReg.forEach((key, value) {
-        registerIds['$key'] =
-            value == true || value == 1 || '$value' == 'true';
+        registerIds['$key'.trim()] =
+            value == true || value == 1 || '$value' == '1' || '$value' == 'true';
       });
     }
 
@@ -278,11 +292,16 @@ class IzanRepository {
     if (rawUsers is List) {
       for (final item in rawUsers.whereType<Map>()) {
         final m = Map<String, dynamic>.from(item);
-        final its = '${m['ejamaat_id'] ?? ''}';
+        final its = '${m['ejamaat_id'] ?? m['its'] ?? ''}'.trim();
+        final fromMap = registerIds[its];
+        final fromRow = m['registered'] == true ||
+            m['registered'] == 1 ||
+            '${m['registered']}' == '1' ||
+            '${m['registered']}' == 'true';
         members.add(
           IzanMember.fromJson(
             m,
-            registered: registerIds[its] ?? false,
+            registered: fromMap ?? fromRow,
           ),
         );
       }
@@ -297,9 +316,21 @@ class IzanRepository {
     }
 
     final onlyHof = (majlis?.onlyHof ?? false) || _asBool(map['only_hof_status']);
+    final passStatus =
+        (majlis?.passStatus ?? false) || _asBool(map['pass_status']);
+    final resolvedMajlis = majlis == null
+        ? null
+        : MajlisItem(
+            id: majlis.id,
+            title: majlis.title,
+            date: majlis.date,
+            hijriDate: majlis.hijriDate,
+            onlyHof: onlyHof || majlis.onlyHof,
+            passStatus: passStatus || majlis.passStatus,
+          );
 
     return IzanDetail(
-      majlis: majlis,
+      majlis: resolvedMajlis,
       members: members,
       guests: guests,
       onlyHof: onlyHof,
@@ -315,12 +346,31 @@ class IzanRepository {
 
   String _messageFrom(dynamic response, {required String fallback}) {
     if (response is Map) {
-      final msg = response['message']?.toString().trim();
-      if (msg != null && msg.isNotEmpty) return msg;
+      final success = response['success'];
+      final msg = response['message']?.toString().trim() ?? '';
+      if (success == false || msg.toLowerCase() == 'error' || msg.toLowerCase() == 'failed') {
+        throw ApiException(
+          statusCode: 400,
+          message: msg.isNotEmpty && msg.toLowerCase() != 'error'
+              ? msg
+              : 'Unable to save registration.',
+        );
+      }
+      final cleaned = msg.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+      if (cleaned.isNotEmpty && !cleaned.contains('{') && cleaned.length < 160) {
+        return cleaned;
+      }
+      return fallback;
     }
     if (response is String) {
-      final t = response.trim();
-      if (t.isNotEmpty && t != 'error' && t != 'failed') return t;
+      final t = response.trim().replaceAll(RegExp(r'<[^>]*>'), '').trim();
+      final lower = t.toLowerCase();
+      if (lower.contains('<html') || lower.contains('warning') || lower.contains('undefined')) {
+        throw ApiException(statusCode: 500, message: 'Unable to save registration.');
+      }
+      if (t.isNotEmpty && t != 'error' && t != 'failed' && t.length < 160 && !t.contains('{')) {
+        return t;
+      }
       if (t == 'error' || t == 'failed') {
         throw ApiException(statusCode: 400, message: 'Unable to save registration.');
       }

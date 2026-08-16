@@ -143,8 +143,8 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                                           ],
                                         ),
                                         const SizedBox(height: 10),
-                                        Text(
-                                          item.displayBody,
+                                        BroadcastBodyText(
+                                          text: item.displayBody,
                                           style: const TextStyle(
                                             fontSize: 13,
                                             color: Color(0xFF374151),
@@ -154,6 +154,10 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                                         if (item.hasMedia) ...[
                                           const SizedBox(height: 10),
                                           BroadcastMediaView(item: item, compact: true),
+                                        ],
+                                        if (item.hasLink) ...[
+                                          const SizedBox(height: 10),
+                                          BroadcastLinkButton(item: item),
                                         ],
                                       ],
                                     ),

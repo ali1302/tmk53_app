@@ -100,14 +100,32 @@ class ApiClient {
       throw ApiException(statusCode: 401, message: 'Authentication failed.');
     }
 
+    // Strip accidental PHP warnings/notices before JSON payloads.
+    final jsonCandidate = _extractJsonPayload(raw) ?? raw;
+
     dynamic decoded;
     try {
-      decoded = jsonDecode(raw);
+      decoded = jsonDecode(jsonCandidate);
     } catch (_) {
-      if (allowPlainText || response.statusCode >= 200 && response.statusCode < 300) {
-        return raw;
-      }
       final lower = raw.toLowerCase();
+      final looksLikeHtml = lower.contains('<html') ||
+          lower.contains('<br') ||
+          lower.contains('<b>warning') ||
+          lower.contains('<b>notice') ||
+          lower.contains('<b>fatal') ||
+          lower.contains('undefined array key');
+      if (looksLikeHtml) {
+        throw ApiException(
+          statusCode: response.statusCode == 200 ? 500 : response.statusCode,
+          message: 'Server returned an error page. Please try again.',
+        );
+      }
+      if (allowPlainText && response.statusCode >= 200 && response.statusCode < 300) {
+        // Only accept short plain-text success messages (legacy Izan/scan replies).
+        if (raw.length <= 120 && !raw.contains('{') && !raw.contains('<')) {
+          return raw;
+        }
+      }
       if (lower.contains('404') || lower.contains('not found')) {
         throw ApiException(
           statusCode: response.statusCode,
@@ -116,7 +134,7 @@ class ApiClient {
       }
       throw ApiException(
         statusCode: response.statusCode,
-        message: raw.length > 120 ? 'Unexpected response from server.' : raw,
+        message: 'Unexpected response from server.',
       );
     }
 
@@ -131,6 +149,14 @@ class ApiClient {
     if (decoded is Map<String, dynamic>) {
       final code = decoded['code']?.toString();
       final error = decoded['error']?.toString();
+      final success = decoded['success'];
+      if (success == false) {
+        throw ApiException(
+          statusCode: response.statusCode,
+          message: _extractMessage(decoded) ?? 'Request failed.',
+          payload: decoded,
+        );
+      }
       if (error != null && error.isNotEmpty && code != '200') {
         throw ApiException(
           statusCode: response.statusCode,
@@ -141,6 +167,28 @@ class ApiClient {
     }
 
     return decoded;
+  }
+
+  /// Prefer a JSON object/array embedded after PHP warning HTML.
+  String? _extractJsonPayload(String raw) {
+    final objectStart = raw.indexOf('{');
+    final arrayStart = raw.indexOf('[');
+    int start = -1;
+    if (objectStart >= 0 && arrayStart >= 0) {
+      start = objectStart < arrayStart ? objectStart : arrayStart;
+    } else if (objectStart >= 0) {
+      start = objectStart;
+    } else if (arrayStart >= 0) {
+      start = arrayStart;
+    }
+    if (start < 0) return null;
+    final candidate = raw.substring(start).trim();
+    try {
+      jsonDecode(candidate);
+      return candidate;
+    } catch (_) {
+      return null;
+    }
   }
 
   String? _extractMessage(dynamic json) {

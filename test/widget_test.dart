@@ -6,6 +6,6 @@ void main() {
     await tester.pumpWidget(const TmkApp());
     await tester.pump();
 
-    expect(find.text('TMK Kuwait'), findsWidgets);
+    expect(find.text('TMK 53'), findsWidgets);
   });
 }

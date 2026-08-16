@@ -98,23 +98,21 @@ class ScanRepository {
     required String token,
     required ScanEvent event,
   }) async {
-    try {
-      if (event.category == 'Majlis') {
-        final response = await _api.get(
-          'Scan/get_its_scanned_list_by_user/${event.id}',
-          token: token,
-        );
-        return _parseScannedList(response);
-      }
-      if (event.category == 'Asbaq') {
-        final response = await _api.get(
-          'Asbaq/get_its_scanned_list_by_user/${event.id}',
-          token: token,
-          asbaq: true,
-        );
-        return _parseScannedList(response);
-      }
-    } catch (_) {}
+    if (event.category == 'Majlis') {
+      final response = await _api.get(
+        'Scan/get_its_scanned_list_by_user/${event.id}',
+        token: token,
+      );
+      return _parseScannedList(response);
+    }
+    if (event.category == 'Asbaq') {
+      final response = await _api.get(
+        'Asbaq/get_its_scanned_list_by_user/${event.id}',
+        token: token,
+        asbaq: true,
+      );
+      return _parseScannedList(response);
+    }
     return const [];
   }
 
@@ -390,45 +388,74 @@ class ScanRepository {
     required ScanEvent event,
     required String its,
   }) async {
+    Future<dynamic> postRemove({
+      required String path,
+      required Map<String, String> fields,
+      bool asbaq = false,
+    }) {
+      return _api.post(
+        path,
+        token: token,
+        asbaq: asbaq,
+        fields: fields,
+      );
+    }
+
     late final dynamic response;
     if (event.category == 'Asbaq') {
-      // Uses existing save_scan_users endpoint with action=remove
-      // (dedicated remove_scan_user route may not be deployed yet).
-      response = await _api.post(
-        'Asbaq/save_scan_users',
-        token: token,
-        asbaq: true,
-        fields: {
-          'asbaq_id': event.id,
-          'its': its,
-          'action': 'remove',
-          'users': '[]',
-        },
-      );
+      try {
+        response = await postRemove(
+          path: 'Asbaq/remove_scan_user',
+          asbaq: true,
+          fields: {
+            'asbaq_id': event.id,
+            'its': its,
+          },
+        );
+      } on ApiException {
+        // Older servers may only support action=remove on save_scan_users.
+        response = await postRemove(
+          path: 'Asbaq/save_scan_users',
+          asbaq: true,
+          fields: {
+            'asbaq_id': event.id,
+            'its': its,
+            'action': 'remove',
+            'users': '[]',
+          },
+        );
+      }
     } else if (event.category == 'Majlis') {
-      response = await _api.post(
-        'Scan/save_scan_users',
-        token: token,
-        fields: {
-          'majlis_id': event.id,
-          'its': its,
-          'action': 'remove',
-          'users': '[]',
-        },
-      );
+      try {
+        response = await postRemove(
+          path: 'Scan/remove_scan_user',
+          fields: {
+            'majlis_id': event.id,
+            'its': its,
+          },
+        );
+      } on ApiException {
+        response = await postRemove(
+          path: 'Scan/save_scan_users',
+          fields: {
+            'majlis_id': event.id,
+            'its': its,
+            'action': 'remove',
+            'users': '[]',
+          },
+        );
+      }
     } else if (event.category == 'Sabaq') {
-      response = await _api.post(
-        'Sabaq/remove',
-        token: token,
+      response = await postRemove(
+        path: 'Sabaq/remove',
         fields: {
           'sabaq_id': event.id,
           'its': its,
         },
       );
     } else if (event.category == 'General') {
-      response = await _api.post(
-        'Generalscan/remove',
-        token: token,
+      response = await postRemove(
+        path: 'Generalscan/remove',
         fields: {
           'generalscan_id': event.id,
           'its': its,
@@ -438,23 +465,35 @@ class ScanRepository {
       throw ApiException(statusCode: 400, message: 'Remove not supported for this event.');
     }
 
-    if (response is Map<String, dynamic>) {
-      final status = '${response['status'] ?? ''}'.toLowerCase();
-      final message = response['message']?.toString() ?? '';
-      // New API returns status=removed. Old servers ignore action=remove.
-      if (status == 'removed' ||
-          message.toLowerCase().contains('removed')) {
-        return message.isNotEmpty ? message : 'ITS removed from scanned list.';
-      }
+    if (response is! Map<String, dynamic>) {
+      throw ApiException(
+        statusCode: 500,
+        message: 'Unable to remove scan from server.',
+      );
+    }
+
+    final status = '${response['status'] ?? ''}'.toLowerCase();
+    final message = response['message']?.toString() ?? '';
+    final code = '${response['code'] ?? ''}';
+    final removed = status == 'removed' ||
+        message.toLowerCase().contains('removed') ||
+        (code == '200' &&
+            (event.category == 'Sabaq' || event.category == 'General'));
+
+    if (!removed) {
       if (event.category == 'Asbaq' || event.category == 'Majlis') {
         throw ApiException(
           statusCode: 409,
           message:
-              'Server API is outdated. Upload the latest Asbaq.php / Scan.php API files to tmk53.com, then try again.',
+              'Server did not remove this ITS. Upload the latest Scan/Asbaq API files, then try again.',
         );
       }
-      return message.isNotEmpty ? message : 'ITS removed from scanned list.';
+      throw ApiException(
+        statusCode: 500,
+        message: message.isNotEmpty ? message : 'Unable to remove scan from server.',
+      );
     }
-    return 'ITS removed from scanned list.';
+
+    return message.isNotEmpty ? message : 'ITS removed from scanned list.';
   }
 }

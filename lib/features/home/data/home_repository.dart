@@ -28,6 +28,24 @@ class HomeRepository {
 
     // Prefer primary when it already has dues; otherwise try legacy merge.
     if (primary != null && primary.dues.isNotEmpty) {
+      // Still merge izan passes from legacy if v1 omitted them.
+      if (primary.izanPasses.isEmpty) {
+        try {
+          final legacy = await _api.post(
+            'get_home_details',
+            fields: {'ejamaat_id': itsId},
+            legacy: true,
+            style: AuthHeaderStyle.none,
+          );
+          final map = _asMap(legacy);
+          if (map != null) {
+            final fromLegacy = HomeDetails.fromJson(map);
+            if (fromLegacy.izanPasses.isNotEmpty) {
+              return primary.copyWith(izanPasses: fromLegacy.izanPasses);
+            }
+          }
+        } catch (_) {}
+      }
       return primary;
     }
 
@@ -44,10 +62,12 @@ class HomeRepository {
         if (primary == null) {
           return fromLegacy;
         }
-        if (fromLegacy.dues.isNotEmpty) {
-          return primary.copyWith(dues: fromLegacy.dues);
-        }
-        return primary;
+        return primary.copyWith(
+          dues: fromLegacy.dues.isNotEmpty ? fromLegacy.dues : null,
+          izanPasses: primary.izanPasses.isEmpty && fromLegacy.izanPasses.isNotEmpty
+              ? fromLegacy.izanPasses
+              : null,
+        );
       }
     } on ApiException {
       if (primary != null) return primary;

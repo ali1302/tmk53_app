@@ -5,6 +5,7 @@ import '../auth/providers/auth_provider.dart';
 import '../broadcast/screens/broadcast_screen.dart';
 import '../calendar/screens/calendar_screen.dart';
 import '../committee/screens/committee_screen.dart';
+import '../contact_us/screens/contact_us_screen.dart';
 import '../dues/screens/dues_screen.dart';
 import '../history_scan/screens/history_scan_screen.dart';
 import '../home/screens/home_screen.dart';
@@ -13,6 +14,7 @@ import '../izan/screens/izan_screen.dart';
 import '../menu/screens/menu_drawer.dart';
 import '../qibla/screens/qibla_screen.dart';
 import '../scan/screens/scan_screen.dart';
+import '../../core/services/push_navigation_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 
@@ -33,13 +35,52 @@ class _AppShellState extends State<AppShell> {
   bool _showQr = false;
   bool _historyScanOpen = false;
   bool _committeeOpen = false;
+  bool _contactUsOpen = false;
   bool _qiblaOpen = false;
   String? _qiblaLocationLabel;
+
+  @override
+  void initState() {
+    super.initState();
+    PushNavigationController.instance.addListener(_onPushNavigation);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onPushNavigation());
+  }
+
+  @override
+  void dispose() {
+    PushNavigationController.instance.removeListener(_onPushNavigation);
+    super.dispose();
+  }
+
+  void _onPushNavigation() {
+    if (!mounted) return;
+    final nav = PushNavigationController.instance;
+    if (!nav.shouldOpenBroadcast) return;
+    nav.consumeOpenBroadcast();
+    setState(() {
+      _menuOpen = false;
+      _calendarOpen = false;
+      _duesOpen = false;
+      _historyScanOpen = false;
+      _committeeOpen = false;
+      _contactUsOpen = false;
+      _qiblaOpen = false;
+      _showQr = false;
+      _activeTab = AppTab.broadcast;
+    });
+  }
 
   void _openQibla(String locationLabel) {
     setState(() {
       _qiblaOpen = true;
       _qiblaLocationLabel = locationLabel;
+    });
+  }
+
+  void _openContactUs() {
+    setState(() {
+      _menuOpen = false;
+      _contactUsOpen = true;
     });
   }
 
@@ -159,6 +200,12 @@ class _AppShellState extends State<AppShell> {
                   onClose: () => setState(() => _committeeOpen = false),
                 ),
               ),
+            if (_contactUsOpen)
+              Positioned.fill(
+                child: ContactUsScreen(
+                  onClose: () => setState(() => _contactUsOpen = false),
+                ),
+              ),
             if (_showQr)
               Positioned.fill(
                 child: QrModal(onClose: () => setState(() => _showQr = false)),
@@ -200,6 +247,7 @@ class _AppShellState extends State<AppShell> {
             onOpenQr: () => setState(() => _showQr = true),
             onOpenQibla: _openQibla,
             onOpenBroadcast: () => _selectTab(AppTab.broadcast),
+            onOpenContactUs: _openContactUs,
           );
         }
         return ScanScreen(
@@ -213,6 +261,7 @@ class _AppShellState extends State<AppShell> {
           onOpenQr: () => setState(() => _showQr = true),
           onOpenQibla: _openQibla,
           onOpenBroadcast: () => _selectTab(AppTab.broadcast),
+          onOpenContactUs: _openContactUs,
         );
     }
   }

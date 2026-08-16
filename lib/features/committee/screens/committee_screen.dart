@@ -192,7 +192,7 @@ class _MemberCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  member.name,
+                  member.name.isNotEmpty ? member.name : member.post,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
@@ -200,7 +200,7 @@ class _MemberCard extends StatelessWidget {
                     height: 1.25,
                   ),
                 ),
-                if (member.post.isNotEmpty) ...[
+                if (member.post.isNotEmpty && member.name.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
                     member.post,

@@ -126,15 +126,53 @@ class BroadcastItem {
     return title.trim();
   }
 
+  /// Admin stores optional CTA as `https://...[###]Link Title`.
+  String? get linkUrl {
+    final raw = link?.trim();
+    if (raw == null || raw.isEmpty || raw.toLowerCase() == 'null') {
+      return null;
+    }
+    final parts = raw.split('[###]');
+    var url = parts.first.trim();
+    if (url.isEmpty) return null;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://$url';
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
+    return url;
+  }
+
+  String get linkLabel {
+    final raw = link?.trim() ?? '';
+    final parts = raw.split('[###]');
+    if (parts.length > 1 && parts[1].trim().isNotEmpty) {
+      return parts[1].trim();
+    }
+    final url = linkUrl ?? '';
+    if (url.contains('forms.gle') || url.contains('docs.google.com/forms')) {
+      return 'Open Google Form';
+    }
+    return 'Open link';
+  }
+
+  bool get hasLink => linkUrl != null;
+
   String? get mediaUrl {
     final raw = file?.trim();
     if (raw == null || raw.isEmpty || raw.toLowerCase() == 'null') {
       return null;
     }
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      // Ignore empty/broken broadcast folder URLs from API when no file was uploaded.
+      final uri = Uri.tryParse(raw);
+      if (uri == null || uri.path.endsWith('/broadcasts/') || uri.path.endsWith('/broadcasts')) {
+        return null;
+      }
       return raw;
     }
     final cleaned = raw.startsWith('/') ? raw.substring(1) : raw;
+    if (cleaned.isEmpty) return null;
     if (cleaned.startsWith('broadcasts/') || cleaned.startsWith('pdf/')) {
       return 'https://tmk53.com/$cleaned';
     }
@@ -183,6 +221,7 @@ class MajlisItem {
     this.date = '',
     this.hijriDate = '',
     this.onlyHof = false,
+    this.passStatus = false,
   });
 
   final String id;
@@ -190,12 +229,14 @@ class MajlisItem {
   final String date;
   final String hijriDate;
   final bool onlyHof;
+  final bool passStatus;
 
   factory MajlisItem.fromJson(Map<String, dynamic>? json) {
     if (json == null || json.isEmpty) {
       return const MajlisItem(id: '', title: '');
     }
     final onlyHofRaw = json['only_hof_status'] ?? json['onlyHof'];
+    final passRaw = json['pass_status'] ?? json['passStatus'];
     return MajlisItem(
       id: '${json['id'] ?? ''}',
       title: '${json['title'] ?? ''}'.trim(),
@@ -205,6 +246,10 @@ class MajlisItem {
           onlyHofRaw == 1 ||
           '$onlyHofRaw' == '1' ||
           '$onlyHofRaw' == 'true',
+      passStatus: passRaw == true ||
+          passRaw == 1 ||
+          '$passRaw' == '1' ||
+          '$passRaw' == 'true',
     );
   }
 
@@ -228,6 +273,39 @@ class MajlisItem {
   }
 }
 
+class IzanPassItem {
+  const IzanPassItem({
+    required this.majlisId,
+    required this.title,
+    this.date = '',
+    this.hijriDate = '',
+  });
+
+  final String majlisId;
+  final String title;
+  final String date;
+  final String hijriDate;
+
+  factory IzanPassItem.fromJson(Map<String, dynamic> json) {
+    return IzanPassItem(
+      majlisId: '${json['majlis_id'] ?? json['id'] ?? ''}'.trim(),
+      title: '${json['title'] ?? json['majlis_title'] ?? ''}'.trim(),
+      date: '${json['date'] ?? json['majlis_date'] ?? ''}'.trim(),
+      hijriDate: '${json['hijriDate'] ?? ''}'.trim(),
+    );
+  }
+
+  bool get isEmpty => title.isEmpty && majlisId.isEmpty;
+
+  String get dateLine {
+    final local = MisriDate.labelFromGregorianString(date);
+    final hijri = (local != null && local.isNotEmpty)
+        ? local
+        : (hijriDate.isNotEmpty ? hijriDate : '');
+    return [hijri, date].where((e) => e.isNotEmpty).join(' · ');
+  }
+}
+
 class HomeDetails {
   const HomeDetails({
     required this.enDate,
@@ -236,6 +314,7 @@ class HomeDetails {
     required this.dues,
     this.notify,
     this.majlis,
+    this.izanPasses = const [],
     this.currentQiyam = '',
     this.address = '',
     this.mapLink = '',
@@ -252,6 +331,8 @@ class HomeDetails {
   final List<DueItem> dues;
   final BroadcastItem? notify;
   final MajlisItem? majlis;
+  /// Pass-enabled majlis events the user (family) is registered for.
+  final List<IzanPassItem> izanPasses;
   final String currentQiyam;
   final String address;
   final String mapLink;
@@ -305,6 +386,22 @@ class HomeDetails {
 
     final userJson = _asStringKeyedMap(json['user']);
 
+    final izanPasses = <IzanPassItem>[];
+    final rawPasses = json['majlis_registrations'] ?? json['izan_passes'];
+    if (rawPasses is List) {
+      final seen = <String>{};
+      for (final item in rawPasses) {
+        final map = _asStringKeyedMap(item);
+        if (map == null) continue;
+        final pass = IzanPassItem.fromJson(map);
+        if (pass.isEmpty) continue;
+        final key = pass.majlisId.isNotEmpty ? pass.majlisId : pass.title;
+        if (seen.contains(key)) continue;
+        seen.add(key);
+        izanPasses.add(pass);
+      }
+    }
+
     return HomeDetails(
       enDate: '${json['enDate'] ?? ''}',
       hijriDate: '${json['hijriDate'] ?? ''}',
@@ -312,6 +409,7 @@ class HomeDetails {
       dues: dues,
       notify: notify,
       majlis: majlis,
+      izanPasses: izanPasses,
       currentQiyam: '${json['current_qiyam'] ?? ''}'.trim(),
       address: '${json['address'] ?? ''}'.trim(),
       mapLink: '${json['maplink'] ?? ''}'.trim(),
@@ -326,7 +424,10 @@ class HomeDetails {
     );
   }
 
-  HomeDetails copyWith({List<DueItem>? dues}) {
+  HomeDetails copyWith({
+    List<DueItem>? dues,
+    List<IzanPassItem>? izanPasses,
+  }) {
     return HomeDetails(
       enDate: enDate,
       hijriDate: hijriDate,
@@ -334,6 +435,7 @@ class HomeDetails {
       dues: dues ?? this.dues,
       notify: notify,
       majlis: majlis,
+      izanPasses: izanPasses ?? this.izanPasses,
       currentQiyam: currentQiyam,
       address: address,
       mapLink: mapLink,
