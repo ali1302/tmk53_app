@@ -8,8 +8,10 @@ import '../committee/screens/committee_screen.dart';
 import '../contact_us/screens/contact_us_screen.dart';
 import '../dues/screens/dues_screen.dart';
 import '../history_scan/screens/history_scan_screen.dart';
+import '../home/providers/home_provider.dart';
 import '../home/screens/home_screen.dart';
 import '../home/widgets/qr_modal.dart';
+import '../izan/providers/izan_provider.dart';
 import '../izan/screens/izan_screen.dart';
 import '../menu/screens/menu_drawer.dart';
 import '../qibla/screens/qibla_screen.dart';
@@ -43,7 +45,10 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     PushNavigationController.instance.addListener(_onPushNavigation);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onPushNavigation());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onPushNavigation();
+      _preloadIzan();
+    });
   }
 
   @override
@@ -68,6 +73,18 @@ class _AppShellState extends State<AppShell> {
       _showQr = false;
       _activeTab = AppTab.broadcast;
     });
+  }
+
+  void _preloadIzan() {
+    if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    if (auth.isDesignPreview || auth.token == null || auth.itsId == null) {
+      return;
+    }
+    context.read<IzanProvider>().load(
+          token: auth.token!,
+          itsId: auth.itsId!,
+        );
   }
 
   void _openQibla(String locationLabel) {
@@ -104,8 +121,12 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     context.watch<ThemeProvider>();
     final auth = context.watch<AuthProvider>();
+    final home = context.watch<HomeProvider>();
+    final izan = context.watch<IzanProvider>();
     final canScan = auth.canScan;
     final izanLabel = auth.izanLabel.trim().isEmpty ? 'Izan' : auth.izanLabel.trim();
+    final showIzanBadge = izan.needsRegistration(auth.itsId ?? '') ||
+        (izan.cards.isEmpty && (home.details?.needsIzanRegistration ?? false));
 
     if (!canScan && _activeTab == AppTab.scan) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -131,6 +152,7 @@ class _AppShellState extends State<AppShell> {
                   onSelect: _selectTab,
                   showScan: canScan,
                   izanLabel: izanLabel,
+                  showIzanBadge: showIzanBadge,
                 ),
               ],
             ),
@@ -165,6 +187,7 @@ class _AppShellState extends State<AppShell> {
                             _committeeOpen = true;
                           });
                         },
+                        onCloseMenu: () => setState(() => _menuOpen = false),
                       ),
                     ),
                     Expanded(
@@ -273,12 +296,14 @@ class _BottomNav extends StatelessWidget {
     required this.onSelect,
     required this.showScan,
     required this.izanLabel,
+    this.showIzanBadge = false,
   });
 
   final AppTab activeTab;
   final ValueChanged<AppTab> onSelect;
   final bool showScan;
   final String izanLabel;
+  final bool showIzanBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +336,7 @@ class _BottomNav extends StatelessWidget {
             label: izanLabel,
             icon: Icons.back_hand_outlined,
             selected: activeTab == AppTab.izan,
+            showBadge: showIzanBadge,
             onTap: () => onSelect(AppTab.izan),
           ),
           if (showScan)
@@ -332,12 +358,14 @@ class _NavItem extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onTap,
+    this.showBadge = false,
   });
 
   final String label;
   final IconData icon;
   final bool selected;
   final VoidCallback onTap;
+  final bool showBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -349,7 +377,26 @@ class _NavItem extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 20, color: color),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, size: 20, color: color),
+                if (showBadge)
+                  Positioned(
+                    right: -3,
+                    top: -2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE11D48),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.primary, width: 1),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 4),
             Text(
               label,

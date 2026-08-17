@@ -95,30 +95,63 @@ class MisriDate {
     return fromJulianDay(jd);
   }
 
-  /// Misri civil day starts at Maghrib.
+  /// Misri civil day starts at Maghrib, not at Gregorian midnight.
   ///
   /// - After Maghrib → next Misri date (رات until Sunrise)
   /// - After Sunrise until Maghrib → same Misri date, without رات
-  /// - Before Sunrise → Misri date of the night that began at previous Maghrib, with رات
+  /// - After midnight until Sunrise → still last night's Misri date, with رات
+  ///
+  /// [maghrib] is the Maghrib clock time; it is applied on [now]'s civil day so
+  /// a stale yesterday Maghrib cannot advance the date at 12:00 midnight.
   static MisriDate fromGregorianAt({
     required DateTime now,
     required DateTime maghrib,
   }) {
+    now = now.toLocal();
+    maghrib = maghrib.toLocal();
     final civil = DateTime(now.year, now.month, now.day);
-    if (!now.isBefore(maghrib)) {
-      // Maghrib has passed — Misri date advances.
+    final maghribToday = DateTime(
+      civil.year,
+      civil.month,
+      civil.day,
+      maghrib.hour,
+      maghrib.minute,
+      maghrib.second,
+    );
+    if (!now.isBefore(maghribToday)) {
+      // Maghrib has passed on this Gregorian day — Misri date advances.
       return MisriDate.fromGregorian(civil.add(const Duration(days: 1)));
     }
     return MisriDate.fromGregorian(civil);
   }
 
-  /// True from Maghrib until Sunrise (Islamic night / رات).
+  /// True from Maghrib until Sunrise (Islamic night / رات), including after midnight.
   static bool isRaat({
     required DateTime now,
     required DateTime sunrise,
     required DateTime maghrib,
   }) {
-    return !now.isBefore(maghrib) || now.isBefore(sunrise);
+    now = now.toLocal();
+    sunrise = sunrise.toLocal();
+    maghrib = maghrib.toLocal();
+    final civil = DateTime(now.year, now.month, now.day);
+    final sunriseToday = DateTime(
+      civil.year,
+      civil.month,
+      civil.day,
+      sunrise.hour,
+      sunrise.minute,
+      sunrise.second,
+    );
+    final maghribToday = DateTime(
+      civil.year,
+      civil.month,
+      civil.day,
+      maghrib.hour,
+      maghrib.minute,
+      maghrib.second,
+    );
+    return !now.isBefore(maghribToday) || now.isBefore(sunriseToday);
   }
 
   DateTime toGregorian() => julianDayToGregorian(julianDay);

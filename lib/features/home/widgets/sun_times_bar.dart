@@ -5,13 +5,14 @@ import '../../../core/theme/app_theme.dart';
 
 /// Gold strip: Sunrise · Zawal · Maghrib (location-based).
 class SunTimesBar extends StatelessWidget {
-  const SunTimesBar({super.key, this.times});
+  const SunTimesBar({super.key, this.times, this.embedded = false});
 
   final SunTimes? times;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final bar = Container(
       width: double.infinity,
       color: AppColors.accent,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -28,6 +29,11 @@ class SunTimesBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (!embedded) return bar;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: bar,
     );
   }
 }

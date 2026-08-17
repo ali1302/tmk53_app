@@ -279,12 +279,18 @@ class IzanPassItem {
     required this.title,
     this.date = '',
     this.hijriDate = '',
+    this.shortDate = '',
+    this.its = '',
+    this.itsName = '',
   });
 
   final String majlisId;
   final String title;
   final String date;
   final String hijriDate;
+  final String shortDate;
+  final String its;
+  final String itsName;
 
   factory IzanPassItem.fromJson(Map<String, dynamic> json) {
     return IzanPassItem(
@@ -292,6 +298,9 @@ class IzanPassItem {
       title: '${json['title'] ?? json['majlis_title'] ?? ''}'.trim(),
       date: '${json['date'] ?? json['majlis_date'] ?? ''}'.trim(),
       hijriDate: '${json['hijriDate'] ?? ''}'.trim(),
+      shortDate: '${json['majlis_date'] ?? ''}'.trim(),
+      its: '${json['its'] ?? json['ejamaat_id'] ?? ''}'.trim(),
+      itsName: '${json['its_name'] ?? json['name'] ?? ''}'.trim(),
     );
   }
 
@@ -303,6 +312,24 @@ class IzanPassItem {
         ? local
         : (hijriDate.isNotEmpty ? hijriDate : '');
     return [hijri, date].where((e) => e.isNotEmpty).join(' · ');
+  }
+
+  /// Dashboard date like "18 Aug".
+  String get displayDate {
+    if (shortDate.isNotEmpty && !shortDate.contains('-')) return shortDate;
+    final source = shortDate.isNotEmpty ? shortDate : date;
+    final match = RegExp(r'^(\d{1,2})[- ]([A-Za-z]{3})').firstMatch(source);
+    if (match != null) return '${match.group(1)} ${match.group(2)}';
+    return source;
+  }
+
+  String personLine({String fallbackIts = '', String fallbackName = ''}) {
+    final id = its.isNotEmpty ? its : fallbackIts.trim();
+    final name = itsName.isNotEmpty ? itsName : fallbackName.trim();
+    if (id.isEmpty && name.isEmpty) return '';
+    if (name.isEmpty) return id;
+    if (id.isEmpty) return name;
+    return '$id: $name';
   }
 }
 
@@ -341,6 +368,17 @@ class HomeDetails {
   final String itsId;
   final String izanLabel;
   final String izanHeading;
+
+  /// True when an active majlis exists and this user has no pass/registration for it.
+  bool get needsIzanRegistration {
+    final current = majlis;
+    if (current == null || current.isEmpty) return false;
+    final id = current.id.trim();
+    if (id.isEmpty) {
+      return izanPasses.isEmpty;
+    }
+    return !izanPasses.any((p) => p.majlisId.trim() == id);
+  }
 
   /// One-line location for the home geography bar.
   String get displayLocation {

@@ -11,6 +11,7 @@ class IzanMember {
     this.misaq = '',
     this.hofId = '',
     this.registered = false,
+    this.persistedRegistered = false,
   });
 
   final String its;
@@ -18,11 +19,16 @@ class IzanMember {
   final String gender;
   final String misaq;
   final String hofId;
+
+  /// Draft toggle state (may differ from server until Save).
   final bool registered;
+
+  /// Last confirmed registration from the server.
+  final bool persistedRegistered;
 
   bool get isHof => hofId.isNotEmpty && its == hofId;
 
-  IzanMember copyWith({bool? registered}) {
+  IzanMember copyWith({bool? registered, bool? persistedRegistered}) {
     return IzanMember(
       its: its,
       name: name,
@@ -30,6 +36,7 @@ class IzanMember {
       misaq: misaq,
       hofId: hofId,
       registered: registered ?? this.registered,
+      persistedRegistered: persistedRegistered ?? this.persistedRegistered,
     );
   }
 
@@ -41,13 +48,15 @@ class IzanMember {
         rawReg == 1 ||
         '$rawReg' == '1' ||
         '$rawReg' == 'true';
+    final isReg = registered ?? fromRow;
     return IzanMember(
       its: its,
       name: '${json['its_name'] ?? json['name'] ?? ''}'.trim(),
       gender: '${json['gender'] ?? ''}'.trim(),
       misaq: '${json['misaq'] ?? ''}'.trim(),
       hofId: hofId,
-      registered: registered ?? fromRow,
+      registered: isReg,
+      persistedRegistered: isReg,
     );
   }
 }
@@ -58,12 +67,16 @@ class IzanGuest {
     required this.name,
     this.gender = 'M',
     this.misaq = 'Done',
+    this.persisted = false,
   });
 
   final String its;
   final String name;
   final String gender;
   final String misaq;
+
+  /// True after the guest is saved on the server.
+  final bool persisted;
 
   Map<String, String> toJson() => {
         'its': its.trim(),
@@ -78,6 +91,7 @@ class IzanGuest {
       name: '${json['name'] ?? ''}',
       gender: '${json['gender'] ?? 'M'}',
       misaq: '${json['misaq'] ?? 'Done'}',
+      persisted: true,
     );
   }
 
@@ -86,12 +100,14 @@ class IzanGuest {
     String? name,
     String? gender,
     String? misaq,
+    bool? persisted,
   }) {
     return IzanGuest(
       its: its ?? this.its,
       name: name ?? this.name,
       gender: gender ?? this.gender,
       misaq: misaq ?? this.misaq,
+      persisted: persisted ?? this.persisted,
     );
   }
 }

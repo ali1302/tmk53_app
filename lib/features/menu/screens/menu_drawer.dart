@@ -8,6 +8,7 @@ import '../../../core/theme/theme_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../feedback/screens/feedback_dialog.dart';
 import '../../home/providers/home_provider.dart';
+import 'its52_browser.dart';
 
 class MenuDrawer extends StatelessWidget {
   const MenuDrawer({
@@ -16,12 +17,14 @@ class MenuDrawer extends StatelessWidget {
     this.onSelfScan,
     this.onDues,
     this.onCommittee,
+    this.onCloseMenu,
   });
 
   final VoidCallback onCalendar;
   final VoidCallback? onSelfScan;
   final VoidCallback? onDues;
   final VoidCallback? onCommittee;
+  final VoidCallback? onCloseMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +101,7 @@ class MenuDrawer extends StatelessWidget {
             ),
             _MenuTile(
               icon: Icons.qr_code_2,
-              label: 'History Scan',
+              label: 'Scan History',
               onTap: onSelfScan,
             ),
             _MenuTile(
@@ -108,15 +111,25 @@ class MenuDrawer extends StatelessWidget {
             ),
             _MenuTile(
               icon: Icons.public,
-              label: 'TMK Website',
+              label: 'TMK53 Website',
               trailing: Icon(Icons.open_in_new, size: 15, color: AppColors.accent),
               onTap: () async {
+                onCloseMenu?.call();
                 final auth = context.read<AuthProvider>();
                 final url = AppConfig.websiteSsoUrl(auth.token);
                 await launchUrl(
                   Uri.parse(url),
                   mode: LaunchMode.externalApplication,
                 );
+              },
+            ),
+            _MenuTile(
+              icon: Icons.badge_outlined,
+              label: 'ITS52 Website',
+              trailing: Icon(Icons.open_in_new, size: 15, color: AppColors.accent),
+              onTap: () async {
+                onCloseMenu?.call();
+                await Its52Browser.open(context);
               },
             ),
             Container(height: 1, color: AppColors.accent),

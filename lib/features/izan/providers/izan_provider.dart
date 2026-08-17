@@ -26,6 +26,19 @@ class IzanEventCard {
   String? errorMessage;
 
   String get id => event.id;
+
+  bool isUserRegistered(String itsId) {
+    final its = itsId.trim();
+    if (its.isEmpty) {
+      return members.any((m) => m.persistedRegistered) ||
+          familyAll.any((m) => m.persistedRegistered);
+    }
+    final self = members.where((m) => m.its.trim() == its);
+    if (self.isNotEmpty) {
+      return self.any((m) => m.persistedRegistered);
+    }
+    return familyAll.any((m) => m.its.trim() == its && m.persistedRegistered);
+  }
 }
 
 class IzanProvider extends ChangeNotifier {
@@ -39,10 +52,19 @@ class IzanProvider extends ChangeNotifier {
   String? errorMessage;
   String? successMessage;
 
+  /// Active majlis exists and the logged-in ITS is not registered for at least one.
+  bool needsRegistration(String itsId) {
+    if (cards.isEmpty) return false;
+    final ready = cards.where((c) => !c.isLoading).toList();
+    if (ready.isEmpty) return false;
+    return ready.any((c) => !c.isUserRegistered(itsId));
+  }
+
   Future<void> load({
     required String token,
     required String itsId,
   }) async {
+    if (isLoading) return;
     isLoading = true;
     errorMessage = null;
     successMessage = null;
@@ -177,10 +199,16 @@ class IzanProvider extends ChangeNotifier {
   void toggleMember(String majlisId, String its, bool value) {
     final i = cards.indexWhere((c) => c.id == majlisId);
     if (i < 0) return;
+    final target = its.trim();
     final next = List<IzanEventCard>.from(cards);
     next[i].members = [
       for (final m in next[i].members)
-        if (m.its == its) m.copyWith(registered: value) else m,
+        if (m.its.trim() == target) m.copyWith(registered: value) else m,
+    ];
+    // Keep familyAll draft in sync (used for only-HOF save payload).
+    next[i].familyAll = [
+      for (final m in next[i].familyAll)
+        if (m.its.trim() == target) m.copyWith(registered: value) else m,
     ];
     cards = next;
     successMessage = null;

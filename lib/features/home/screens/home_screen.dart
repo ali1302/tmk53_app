@@ -48,20 +48,23 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _locating = false;
   String? _locationError;
   SunTimes? _sunTimes;
+  double? _lat;
+  double? _lon;
   Timer? _misriTick;
 
   @override
   void initState() {
     super.initState();
     // Fallback until GPS arrives; then times follow the user's location.
-    _sunTimes = _sunTimesService.forKuwait();
+    _refreshSunTimes();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _load();
       _restoreAndFetchLocation();
     });
-    // Refresh Misri date / رات when Maghrib or Sunrise crosses.
+    // Refresh sun times + Misri date / رات across Maghrib, midnight, and Sunrise.
     _misriTick = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(_refreshSunTimes);
     });
   }
 
@@ -69,6 +72,19 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _misriTick?.cancel();
     super.dispose();
+  }
+
+  void _refreshSunTimes([DateTime? now]) {
+    final day = now ?? DateTime.now();
+    if (_lat != null && _lon != null) {
+      _sunTimes = _sunTimesService.forCoordinates(
+        latitude: _lat!,
+        longitude: _lon!,
+        date: day,
+      );
+    } else {
+      _sunTimes = _sunTimesService.forKuwait(date: day);
+    }
   }
 
   Future<void> _load() async {
@@ -100,10 +116,9 @@ class _HomeScreenState extends State<HomeScreen> {
           prefs.remove(_locationCacheKey);
         }
         if (lat != null && lon != null) {
-          _sunTimes = _sunTimesService.forCoordinates(
-            latitude: lat,
-            longitude: lon,
-          );
+          _lat = lat;
+          _lon = lon;
+          _refreshSunTimes();
         }
       });
     }
@@ -128,10 +143,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _geoLocation = location.label;
-        _sunTimes = _sunTimesService.forCoordinates(
-          latitude: location.latitude,
-          longitude: location.longitude,
-        );
+        _lat = location.latitude;
+        _lon = location.longitude;
+        _refreshSunTimes();
       });
     } catch (e) {
       if (!mounted) return;
@@ -145,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _geoLocation = 'Location unavailable';
         }
         // Keep last GPS times if we have them; otherwise Kuwait fallback.
-        _sunTimes ??= _sunTimesService.forKuwait();
+        _refreshSunTimes();
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -256,14 +270,161 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      dateParts.weekday,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.5,
+                        color: AppColors.gray500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      dateParts.day,
+                      style: const TextStyle(
+                        fontSize: 48,
+                        fontWeight: FontWeight.w700,
+                        height: 1,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      dateParts.monthYear,
+                      style: const TextStyle(fontSize: 14, color: AppColors.gray500),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    textDirection: TextDirection.rtl,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        hijriDisplay.dayArabic,
+                        style: GoogleFonts.notoNaskhArabic(
+                          fontSize: 40,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.accent,
+                          height: 1,
+                        ),
+                      ),
+                      if (hijriDisplay.isRaat) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          'رات',
+                          style: GoogleFonts.notoNaskhArabic(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.accent,
+                            height: 1,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    hijriDisplay.monthYearArabic,
+                    textDirection: TextDirection.rtl,
+                    style: GoogleFonts.notoNaskhArabic(
+                      fontSize: 18,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Container(
+          color: AppColors.cream,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.location_on, size: 14, color: AppColors.muted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _geoLocation == 'Location unavailable'
+                      ? _fetchLocation
+                      : _openMapsForCurrentLocation,
+                  child: Text(
+                    _locationError != null &&
+                            _geoLocation == 'Location unavailable'
+                        ? 'Tap to enable location'
+                        : _geoLocation,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF5A4A30),
+                    ),
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: 'Qibla Finder',
+                child: Material(
+                  color: AppColors.accent,
+                  shape: const CircleBorder(),
+                  elevation: 1,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: widget.onOpenQibla == null ? null : _openQibla,
+                    child: const SizedBox(
+                      width: 36,
+                      height: 36,
+                      child: Center(
+                        child: KaabaIcon(size: 28),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              if (_locating)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                InkWell(
+                  onTap: _fetchLocation,
+                  child: const Icon(Icons.refresh, size: 16, color: AppColors.muted),
+                ),
+            ],
+          ),
+        ),
+        SunTimesBar(times: _sunTimes),
         Expanded(
           child: home.isLoading && details == null
               ? const Center(child: CircularProgressIndicator())
               : RefreshIndicator(
                   onRefresh: _load,
-                  child: ListView(
+                  child: ColoredBox(
+                    color: AppColors.background,
+                    child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.zero,
+                    padding: const EdgeInsets.only(bottom: 24),
                     children: [
                       if (home.errorMessage != null)
                         Padding(
@@ -273,241 +434,68 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: const TextStyle(color: Colors.red),
                           ),
                         ),
-                      Container(
-                        color: Colors.white,
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    dateParts.weekday,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      letterSpacing: 1.5,
-                                      color: AppColors.gray500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    dateParts.day,
-                                    style: const TextStyle(
-                                      fontSize: 48,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1,
-                                      color: AppColors.accent,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    dateParts.monthYear,
-                                    style: const TextStyle(fontSize: 14, color: AppColors.gray500),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  textDirection: TextDirection.rtl,
-                                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                                  textBaseline: TextBaseline.alphabetic,
-                                  children: [
-                                    Text(
-                                      hijriDisplay.dayArabic,
-                                      style: GoogleFonts.notoNaskhArabic(
-                                        fontSize: 40,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.accent,
-                                        height: 1,
-                                      ),
-                                    ),
-                                    if (hijriDisplay.isRaat) ...[
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'رات',
-                                        style: GoogleFonts.notoNaskhArabic(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.accent,
-                                          height: 1,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  hijriDisplay.monthYearArabic,
-                                  textDirection: TextDirection.rtl,
-                                  style: GoogleFonts.notoNaskhArabic(
-                                    fontSize: 18,
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        color: AppColors.cream,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.location_on, size: 14, color: AppColors.muted),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: _geoLocation == 'Location unavailable'
-                                    ? _fetchLocation
-                                    : _openMapsForCurrentLocation,
-                                child: Text(
-                                  _locationError != null &&
-                                          _geoLocation == 'Location unavailable'
-                                      ? 'Tap to enable location'
-                                      : _geoLocation,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF5A4A30),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Tooltip(
-                              message: 'Qibla Finder',
-                              child: Material(
-                                color: AppColors.accent,
-                                shape: const CircleBorder(),
-                                elevation: 1,
-                                child: InkWell(
-                                  customBorder: const CircleBorder(),
-                                  onTap: widget.onOpenQibla == null ? null : _openQibla,
-                                  child: const SizedBox(
-                                    width: 36,
-                                    height: 36,
-                                    child: Center(
-                                      child: KaabaIcon(size: 28),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            if (_locating)
-                              const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            else
-                              InkWell(
-                                onTap: _fetchLocation,
-                                child: const Icon(Icons.refresh, size: 16, color: AppColors.muted),
-                              ),
-                          ],
-                        ),
-                      ),
-                      SunTimesBar(times: _sunTimes),
                       if (details?.currentQiyam.isNotEmpty == true)
-                        _InfoCard(
+                        _DashboardCard(
+                          icon: Icons.mosque_outlined,
                           title: 'Current Qiyaam Shareef',
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
                                 'Syedna Abu Jafar us Sadiq Aaliqadr Mufaddal Saifuddin (TUS) Is In :',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF4B5563),
-                                  height: 1.35,
-                                ),
+                                style: _CardStyle.secondary,
                               ),
                               const SizedBox(height: 6),
                               Text(
                                 details!.currentQiyam,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary,
-                                ),
+                                style: _CardStyle.primary,
                               ),
                             ],
                           ),
                         ),
                       if (details != null && details.izanPasses.isNotEmpty)
-                        ...details.izanPasses.map(
-                          (pass) => _InfoCard(
-                            title:
-                                'Your ${details.izanLabel} Pass is available',
+                        ...details.izanPasses.map((pass) {
+                          final person = pass.personLine(
+                            fallbackIts: details.itsId.isNotEmpty
+                                ? details.itsId
+                                : details.user.ejamaatId,
+                            fallbackName: details.user.itsName,
+                          );
+                          return _DashboardCard(
+                            icon: Icons.confirmation_number_outlined,
+                            title: 'Jaman ${details.izanLabel} Pass',
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  pass.title.isNotEmpty
-                                      ? pass.title
-                                      : 'Event',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.text,
-                                  ),
+                                  pass.title.isNotEmpty ? pass.title : 'Event',
+                                  style: _CardStyle.primary,
                                 ),
-                                if (pass.dateLine.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    pass.dateLine,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.gray500,
-                                    ),
+                                if (pass.displayDate.isNotEmpty || person.isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (pass.displayDate.isNotEmpty) ...[
+                                        Text(pass.displayDate, style: _CardStyle.secondary),
+                                        const SizedBox(width: 12),
+                                      ],
+                                      if (person.isNotEmpty)
+                                        Expanded(
+                                          child: Text(person, style: _CardStyle.secondary),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ],
                             ),
-                          ),
-                        ),
-                      if (details?.majlis != null && !details!.majlis!.isEmpty)
-                        _InfoCard(
-                          title: 'Current Majlis',
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                details.majlis!.title,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.text,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                [
-                                  details.majlis!.misriDateLabel,
-                                  details.majlis!.date,
-                                ].where((e) => e.isNotEmpty).join(' · '),
-                                style: const TextStyle(fontSize: 12, color: AppColors.gray500),
-                              ),
-                            ],
-                          ),
-                        ),
-                      _InfoCard(
+                          );
+                        }),
+                      _DashboardCard(
+                        icon: Icons.notifications_none,
                         title: 'Latest Notification',
                         child: details?.notify == null
-                            ? const Text(
-                                'No notifications.',
-                                style: TextStyle(fontSize: 14, color: AppColors.gray500),
-                              )
+                            ? const Text('No notifications.', style: _CardStyle.secondary)
                             : Builder(
                                 builder: (context) {
                                   final notify = details!.notify!;
@@ -540,8 +528,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 },
                               ),
                       ),
-                      const SizedBox(height: 16),
                     ],
+                  ),
                   ),
                 ),
         ),
@@ -550,7 +538,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   _HijriDisplay _formatMisriDate(DateTime now) {
-    final times = _sunTimes ?? _sunTimesService.forKuwait(date: now);
+    // Always resolve Maghrib/Sunrise for the current Gregorian day so midnight
+    // does not keep using yesterday's Maghrib (which wrongly advanced the date).
+    final times = (_lat != null && _lon != null)
+        ? _sunTimesService.forCoordinates(
+            latitude: _lat!,
+            longitude: _lon!,
+            date: now,
+          )
+        : (_sunTimes ?? _sunTimesService.forKuwait(date: now));
     final MisriDate misri;
     final bool raat;
     if (times != null) {
@@ -680,7 +676,11 @@ class _NotifyBlock extends StatelessWidget {
                 children: [
                   const Text(
                     'TMK Broadcast',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.text,
+                    ),
                   ),
                   if (showNew) ...[
                     const SizedBox(width: 8),
@@ -689,11 +689,11 @@ class _NotifyBlock extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 2),
-              Text(item.date, style: const TextStyle(fontSize: 10, color: AppColors.gray400)),
+              Text(item.date, style: _CardStyle.meta),
               const SizedBox(height: 6),
               BroadcastBodyText(
                 text: item.displayBody,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF374151), height: 1.4),
+                style: _CardStyle.secondary,
               ),
               if (showMedia && item.hasMedia) ...[
                 const SizedBox(height: 8),
@@ -711,43 +711,95 @@ class _NotifyBlock extends StatelessWidget {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.title, required this.child});
-  final String title;
+class _CardStyle {
+  static TextStyle get primary => TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        color: AppColors.primary,
+        height: 1.3,
+      );
+
+  static const secondary = TextStyle(
+    fontSize: 13,
+    color: Color(0xFF4B5563),
+    height: 1.35,
+  );
+
+  static const meta = TextStyle(
+    fontSize: 12,
+    color: AppColors.gray500,
+  );
+}
+
+class _DashboardCard extends StatelessWidget {
+  const _DashboardCard({
+    required this.child,
+    this.title,
+    this.icon,
+  });
+
+  final String? title;
+  final IconData? icon;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8E0D0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-              color: AppColors.accent,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            border: Border(
+              left: BorderSide(color: AppColors.accent, width: 4),
             ),
           ),
-          const SizedBox(height: 10),
-          child,
-        ],
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (title != null) ...[
+                  Row(
+                    children: [
+                      if (icon != null) ...[
+                        Icon(icon, size: 16, color: AppColors.accent),
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: Text(
+                          title!.toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1, color: Color(0xFFE8E0D0)),
+                  const SizedBox(height: 12),
+                ],
+                child,
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

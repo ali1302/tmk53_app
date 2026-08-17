@@ -70,7 +70,7 @@ class _HistoryScanScreenState extends State<HistoryScanScreen>
                       icon: const Icon(Icons.chevron_left, color: AppColors.accent, size: 28),
                     ),
                     const Text(
-                      'History Scan',
+                      'Scan History',
                       style: TextStyle(
                         color: AppColors.accent,
                         fontSize: 16,

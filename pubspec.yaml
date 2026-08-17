@@ -28,6 +28,8 @@ dependencies:
   firebase_core: any
   firebase_messaging: any
   uuid: ^4.6.0
+  desktop_webview_window: ^0.2.3
+  path_provider: ^2.1.6
 dev_dependencies:
   flutter_test:
     sdk: flutter

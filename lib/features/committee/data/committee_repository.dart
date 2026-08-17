@@ -86,7 +86,7 @@ class CommitteeRepository {
     const base = 'https://tmk53.com/uploads/';
     const rows = <Map<String, String>>[
       {
-        'name': 'Shaikh Mohammed bhai Shaikh Taherali bhai Petiwala',
+        'name': 'Shaikh Aliasgar bhai Mulla Abdulhusain bhai Kothawala',
         'post': 'Janab Amil Saheb',
         'color': '#809248',
       },

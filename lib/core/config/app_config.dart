@@ -32,6 +32,12 @@ class AppConfig {
 
   static String get websiteUrl => baseUrl;
 
+  /// ITS52 portal (same ITS ID used by the app).
+  static const String its52Url = 'https://www.its52.com/';
+
+  /// Normal ITS52 login (creates a real portal session — unlike OneLogin=KHAITAAN).
+  static const String its52LoginUrl = 'https://www.its52.com/Login.aspx';
+
   /// Open TMK53 website already logged in with the app JWT session.
   static String websiteSsoUrl(String? token, {String redirect = 'home/'}) {
     final t = token?.trim() ?? '';

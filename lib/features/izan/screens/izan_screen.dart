@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../home/providers/home_provider.dart';
 import '../data/izan_repository.dart';
 import '../providers/izan_provider.dart';
 
@@ -23,11 +24,17 @@ class IzanScreen extends StatefulWidget {
 }
 
 class _IzanScreenState extends State<IzanScreen> {
+  String? _openMajlisId;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
+
+  String get _heading => widget.heading.trim().isEmpty
+      ? 'Registration for Jaman Izan'
+      : widget.heading.trim();
 
   Future<void> _load() async {
     final auth = context.read<AuthProvider>();
@@ -48,6 +55,14 @@ class _IzanScreenState extends State<IzanScreen> {
       itsId: auth.itsId ?? '',
       majlisId: majlisId,
     );
+    if (!mounted) return;
+    if (ok) {
+      await context.read<HomeProvider>().load(
+            token: auth.token ?? '',
+            itsId: auth.itsId ?? '',
+            preview: auth.isDesignPreview,
+          );
+    }
     if (!mounted) return;
     final card = izan.cards.where((c) => c.id == majlisId).toList();
     final msg = ok
@@ -153,122 +168,199 @@ class _IzanScreenState extends State<IzanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenTitle = widget.title.trim().isEmpty ? 'Izan' : widget.title.trim();
-    final screenHeading = widget.heading.trim().isEmpty
-        ? 'Registration for Jaman Izan'
-        : widget.heading.trim();
     final auth = context.watch<AuthProvider>();
     final izan = context.watch<IzanProvider>();
+    final home = context.watch<HomeProvider>().details;
+    final loggedInIts = auth.itsId ?? '';
 
-    return Column(
-      children: [
-        _Header(title: screenTitle, onBack: widget.onBack),
-        Expanded(
-          child: auth.isDesignPreview
-              ? const Center(child: Text('Design preview — login for live RSVP.'))
-              : izan.isLoading && izan.cards.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-                        children: [
-                          if (izan.errorMessage != null && izan.cards.isEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Text(
-                                izan.errorMessage!,
-                                style: const TextStyle(color: Colors.red),
-                              ),
-                            ),
-                          if (izan.cards.isEmpty)
-                            _EmptyCard(heading: screenHeading)
-                          else ...[
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 10, left: 4),
-                              child: Text(
-                                screenHeading,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1F2937),
-                                ),
-                              ),
-                            ),
-                            for (final card in izan.cards) ...[
-                              _EventCard(
-                                card: card,
-                                izanLabel: screenTitle,
-                                loggedInIts: auth.itsId ?? '',
+    IzanEventCard? openCard;
+    if (_openMajlisId != null) {
+      final match = izan.cards.where((c) => c.id == _openMajlisId).toList();
+      if (match.isNotEmpty) openCard = match.first;
+    }
+
+    return ColoredBox(
+      color: const Color(0xFFF6EDE3),
+      child: Column(
+        children: [
+          if (openCard != null)
+            _Header(
+              title: _heading,
+              onBack: () => setState(() => _openMajlisId = null),
+            )
+          else
+            SizedBox(height: MediaQuery.of(context).padding.top),
+          Expanded(
+            child: auth.isDesignPreview
+                ? const Center(child: Text('Design preview — login for live RSVP.'))
+                : izan.isLoading && izan.cards.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : RefreshIndicator(
+                        onRefresh: _load,
+                        child: openCard == null
+                            ? _LandingList(
+                                heading: _heading,
+                                error: izan.errorMessage,
+                                cards: izan.cards,
+                                loggedInIts: loggedInIts,
+                                onRegister: (id) => setState(() => _openMajlisId = id),
+                              )
+                            : _RegisterFlow(
+                                card: openCard,
+                                loggedInIts: loggedInIts,
+                                fallbackName: home?.user.itsName ?? '',
                                 onToggle: (its, v) =>
-                                    izan.toggleMember(card.id, its, v),
-                                onAddGuest: () => _showAddGuest(card.id),
-                                onRemoveGuest: (i) => izan.removeGuest(card.id, i),
-                                onSave: () => _save(card.id),
+                                    izan.toggleMember(openCard!.id, its, v),
+                                onAddGuest: () => _showAddGuest(openCard!.id),
+                                onRemoveGuest: (i) =>
+                                    izan.removeGuest(openCard!.id, i),
+                                onSave: () => _save(openCard!.id),
                               ),
-                              const SizedBox(height: 12),
-                            ],
-                          ],
-                        ],
                       ),
-                    ),
-        ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LandingList extends StatelessWidget {
+  const _LandingList({
+    required this.heading,
+    required this.cards,
+    required this.loggedInIts,
+    required this.onRegister,
+    this.error,
+  });
+
+  final String heading;
+  final String? error;
+  final List<IzanEventCard> cards;
+  final String loggedInIts;
+  final ValueChanged<String> onRegister;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        if (error != null && cards.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(error!, style: const TextStyle(color: Colors.red)),
+          ),
+        if (cards.isEmpty)
+          _LandingEventCard(
+            heading: heading,
+            title: 'Not active.',
+            date: '',
+            hijri: '',
+            buttonLabel: null,
+            onRegister: null,
+          )
+        else
+          for (final card in cards) ...[
+            _LandingEventCard(
+              heading: heading,
+              title: card.event.title.isEmpty ? 'RSVP Event' : card.event.title,
+              date: card.event.date,
+              hijri: card.event.misriDateLabel,
+              loading: card.isLoading,
+              buttonLabel: card.isUserRegistered(loggedInIts)
+                  ? 'View Registration'
+                  : 'Register Now',
+              onRegister: card.isLoading ? null : () => onRegister(card.id),
+            ),
+            const SizedBox(height: 14),
+          ],
       ],
     );
   }
 }
 
-class _EmptyCard extends StatelessWidget {
-  const _EmptyCard({required this.heading});
+class _LandingEventCard extends StatelessWidget {
+  const _LandingEventCard({
+    required this.heading,
+    required this.title,
+    required this.date,
+    required this.hijri,
+    required this.buttonLabel,
+    required this.onRegister,
+    this.loading = false,
+  });
+
   final String heading;
+  final String title;
+  final String date;
+  final String hijri;
+  final String? buttonLabel;
+  final VoidCallback? onRegister;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 6,
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            heading,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF1F2937),
+      child: loading
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 28),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  heading,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Divider(height: 1, color: Color(0xFFE5E7EB)),
+                const SizedBox(height: 12),
+                _DateRow(date: date, hijri: hijri),
+                if (buttonLabel != null) ...[
+                  const SizedBox(height: 16),
+                  _SendButton(
+                    label: buttonLabel!,
+                    onPressed: onRegister,
+                  ),
+                ],
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Not active.',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.gray500,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
 
-class _EventCard extends StatelessWidget {
-  const _EventCard({
+class _RegisterFlow extends StatelessWidget {
+  const _RegisterFlow({
     required this.card,
-    required this.izanLabel,
     required this.loggedInIts,
+    required this.fallbackName,
     required this.onToggle,
     required this.onAddGuest,
     required this.onRemoveGuest,
@@ -276,230 +368,355 @@ class _EventCard extends StatelessWidget {
   });
 
   final IzanEventCard card;
-  final String izanLabel;
   final String loggedInIts;
+  final String fallbackName;
   final void Function(String its, bool value) onToggle;
   final VoidCallback onAddGuest;
   final void Function(int index) onRemoveGuest;
   final VoidCallback onSave;
 
-  bool get _userRegistered {
-    final its = loggedInIts.trim();
-    if (its.isEmpty) {
-      return card.members.any((m) => m.registered);
-    }
-    final self = card.members.where((m) => m.its.trim() == its);
-    if (self.isNotEmpty) {
-      return self.any((m) => m.registered);
-    }
-    // HOF-only view may hide other members; treat any registered member as yes.
-    return card.members.any((m) => m.registered) ||
-        card.familyAll.any((m) => m.its.trim() == its && m.registered);
-  }
-
   @override
   Widget build(BuildContext context) {
     final event = card.event;
-    final alreadyRegistered = _userRegistered;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 6,
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      children: [
+        _WhiteCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                event.title.isEmpty ? 'RSVP Event' : event.title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _DateRow(date: event.date, hijri: event.misriDateLabel),
+            ],
+          ),
+        ),
+        if (card.errorMessage != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            card.errorMessage!,
+            style: const TextStyle(color: Colors.red, fontSize: 12),
           ),
         ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: card.isLoading
-            ? const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 18),
+        Text(
+          'Users Pass',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (card.members.isEmpty)
+          const _WhiteCard(
+            child: Text('No family members found.', style: TextStyle(color: AppColors.gray500)),
+          )
+        else
+          for (final m in card.members) ...[
+            _PersonCard(
+              name: m.name.isNotEmpty
+                  ? m.name
+                  : (m.its.trim() == loggedInIts.trim() ? fallbackName : m.its),
+              its: m.its,
+              trailing: Text(
+                m.persistedRegistered ? 'Registered' : 'Not Registered',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: m.persistedRegistered
+                      ? const Color(0xFF15803D)
+                      : const Color(0xFFDC2626),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        if (!card.event.onlyHof &&
+            card.guests.any((g) => g.persisted)) ...[
+          const SizedBox(height: 10),
+          Text(
+            'Guest Pass',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final g in card.guests.where((g) => g.persisted)) ...[
+            _PersonCard(
+              name: g.name,
+              its: g.its,
+              subtitle: '${g.gender} · ${g.misaq} · Guest',
+              trailing: const Text(
+                'Registered',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF15803D),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                card.event.onlyHof ? 'HOF Registration' : 'User Registration',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+            if (!card.event.onlyHof)
+              TextButton(
+                onPressed: onAddGuest,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                ),
+                child: const Text(
+                  '+ Add Guest',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (card.members.isEmpty)
+          const _WhiteCard(
+            child: Text('No family members found.', style: TextStyle(color: AppColors.gray500)),
+          )
+        else
+          for (final m in card.members) ...[
+            _PersonCard(
+              name: m.name.isNotEmpty
+                  ? m.name
+                  : (m.its.trim() == loggedInIts.trim() ? fallbackName : m.its),
+              its: m.its,
+              trailing: Checkbox(
+                value: m.registered,
+                activeColor: AppColors.primary,
+                onChanged: (v) => onToggle(m.its, v ?? false),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        if (!card.event.onlyHof)
+          for (var i = 0; i < card.guests.length; i++) ...[
+            _PersonCard(
+              name: card.guests[i].name,
+              its: card.guests[i].its,
+              subtitle: '${card.guests[i].gender} · ${card.guests[i].misaq} · Guest',
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFDC2626)),
+                onPressed: () => onRemoveGuest(i),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        const SizedBox(height: 12),
+        _SendButton(
+          label: 'Save',
+          onPressed: card.isSaving ? null : onSave,
+          loading: card.isSaving,
+          filled: false,
+        ),
+      ],
+    );
+  }
+}
+
+class _DateRow extends StatelessWidget {
+  const _DateRow({required this.date, required this.hijri});
+
+  final String date;
+  final String hijri;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        if (date.isNotEmpty)
+          Expanded(
+            child: Row(
               children: [
-                Text(
-                  event.title.isEmpty ? 'RSVP Event' : event.title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  [
-                    if (event.date.isNotEmpty) event.date,
-                    if (event.misriDateLabel.isNotEmpty) event.misriDateLabel,
-                  ].join('  ·  '),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.gray500,
-                  ),
-                ),
-                if (alreadyRegistered) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFA7F3D0)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Your $izanLabel Pass is available',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF166534),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          'You are already registered',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF166534),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                if (card.errorMessage != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    card.errorMessage!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                Text(
-                  card.event.onlyHof ? 'HOF Registration' : 'Family',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF374151),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (card.members.isEmpty)
-                  const Text(
-                    'No family members found.',
-                    style: TextStyle(color: AppColors.gray500),
-                  )
-                else
-                  ...card.members.map(
-                    (m) => SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text(
-                        m.name.isEmpty ? m.its : m.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
-                      ),
-                      subtitle: Text(
-                        [
-                          m.its,
-                          if (m.gender.isNotEmpty) m.gender,
-                          if (card.event.onlyHof) 'HOF only',
-                        ].join(' · '),
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      value: m.registered,
-                      activeThumbColor: AppColors.accent,
-                      onChanged: (v) => onToggle(m.its, v),
-                    ),
-                  ),
-                if (!card.event.onlyHof) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Guests',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF374151),
-                          ),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: onAddGuest,
-                        icon: const Icon(Icons.person_add_alt_1, size: 18),
-                        label: const Text('Add'),
-                      ),
-                    ],
-                  ),
-                  if (card.guests.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'No guests added.',
-                        style: TextStyle(color: AppColors.gray500, fontSize: 13),
-                      ),
-                    )
-                  else
-                    ...List.generate(card.guests.length, (i) {
-                      final g = card.guests[i];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                        title: Text(
-                          g.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        subtitle: Text('${g.its} · ${g.gender} · ${g.misaq}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          onPressed: () => onRemoveGuest(i),
-                        ),
-                      );
-                    }),
-                ],
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: card.isSaving ? null : onSave,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: AppColors.accent,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: card.isSaving
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            alreadyRegistered
-                                ? 'Update Registration'
-                                : 'Save Registration',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
+                Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    date,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF4B5563)),
                   ),
                 ),
               ],
             ),
+          ),
+        if (hijri.isNotEmpty)
+          Expanded(
+            child: Row(
+              children: [
+                Icon(Icons.brightness_2_outlined, size: 16, color: AppColors.primary),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    hijri,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF4B5563)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PersonCard extends StatelessWidget {
+  const _PersonCard({
+    required this.name,
+    required this.its,
+    required this.trailing,
+    this.subtitle,
+  });
+
+  final String name;
+  final String its;
+  final String? subtitle;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return _WhiteCard(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: const Color(0xFFEEF2FF),
+            child: Icon(Icons.person, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name.isEmpty ? its : name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF111827),
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle == null ? its : '$its  ·  $subtitle',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                ),
+              ],
+            ),
+          ),
+          trailing,
+        ],
+      ),
+    );
+  }
+}
+
+class _WhiteCard extends StatelessWidget {
+  const _WhiteCard({required this.child, this.padding});
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _SendButton extends StatelessWidget {
+  const _SendButton({
+    required this.label,
+    required this.onPressed,
+    this.loading = false,
+    this.filled = true,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool loading;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = filled ? AppColors.primary : const Color(0xFFE8D5B5);
+    final fg = filled ? Colors.white : AppColors.primary;
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton(
+        onPressed: loading ? null : onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bg,
+          foregroundColor: fg,
+          disabledBackgroundColor: bg.withValues(alpha: 0.7),
+          elevation: 0,
+          shape: const StadiumBorder(),
+        ),
+        child: loading
+            ? SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: fg),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.send, size: 18, color: fg),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      letterSpacing: 0.2,
+                      color: fg,
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -507,6 +724,7 @@ class _EventCard extends StatelessWidget {
 
 class _Header extends StatelessWidget {
   const _Header({required this.title, required this.onBack});
+
   final String title;
   final VoidCallback onBack;
 
@@ -526,14 +744,29 @@ class _Header extends StatelessWidget {
             onPressed: onBack,
             icon: const Icon(Icons.chevron_left, color: AppColors.accent, size: 28),
           ),
-          Text(
-            title,
-            style: const TextStyle(
+          const Text(
+            'Home',
+            style: TextStyle(
               color: AppColors.accent,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
             ),
           ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.accent,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 64),
         ],
       ),
     );
