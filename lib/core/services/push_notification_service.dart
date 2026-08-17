@@ -25,13 +25,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<bool> _initFirebaseSafely() async {
   try {
     if (Firebase.apps.isNotEmpty) return true;
-    if (DefaultFirebaseOptions.isConfigured) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    } else {
-      await Firebase.initializeApp();
-    }
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     return true;
   } catch (e) {
     if (kDebugMode) {

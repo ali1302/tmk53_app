@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "231156823209",
+    "project_id": "tmk-53",
+    "storage_bucket": "tmk-53.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:231156823209:android:299898ad24757ec24625b8",
+        "android_client_info": {
+          "package_name": "com.tmkkuwait.tmk_kuwait"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCDUsIM2M6V1xLDe1qJBX-3NxOTwFwv7Ic"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
