@@ -30,6 +30,7 @@ dependencies:
   uuid: ^4.6.0
   desktop_webview_window: ^0.2.3
   path_provider: ^2.1.6
+  package_info_plus: ^8.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -43,26 +44,30 @@ flutter:
     - assets/images/tmk_crest.png
     - assets/images/app_icon.png
     - assets/images/app_icon_foreground.png
+    - assets/images/app_icon_branded.png
+    - assets/images/app_icon_transparent.png
+    - assets/images/app_icon_foreground_branded.png
+    - assets/images/app_icon_adaptive_fg.png
     - assets/images/kaaba_3d.png
     - assets/sounds/scan_success.wav
 
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/images/app_icon.png
+  image_path: assets/images/app_icon_transparent.png
   remove_alpha_ios: true
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: assets/images/app_icon_foreground.png
-  adaptive_icon_foreground_inset: 0
+  adaptive_icon_foreground: assets/images/app_icon_adaptive_fg.png
+  adaptive_icon_foreground_inset: 16
   web:
     generate: true
-    image_path: assets/images/app_icon.png
-    background_color: "#3D1035"
+    image_path: assets/images/app_icon_transparent.png
+    background_color: "#F5EFD8"
     theme_color: "#3D1035"
   windows:
     generate: true
-    image_path: assets/images/app_icon.png
+    image_path: assets/images/app_icon_transparent.png
     icon_size: 256
   macos:
     generate: true
-    image_path: assets/images/app_icon.png
+    image_path: assets/images/app_icon_transparent.png

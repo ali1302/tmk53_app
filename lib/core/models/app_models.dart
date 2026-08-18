@@ -273,6 +273,46 @@ class MajlisItem {
   }
 }
 
+class IzanPassPerson {
+  const IzanPassPerson({
+    required this.its,
+    this.itsName = '',
+    this.isGuest = false,
+  });
+
+  final String its;
+  final String itsName;
+  final bool isGuest;
+
+  factory IzanPassPerson.fromJson(Map<String, dynamic> json) {
+    return IzanPassPerson(
+      its: '${json['its'] ?? json['ejamaat_id'] ?? ''}'.trim(),
+      itsName: '${json['its_name'] ?? json['name'] ?? ''}'.trim(),
+      isGuest: _asBool(json['is_guest']),
+    );
+  }
+
+  String line({String fallbackIts = '', String fallbackName = ''}) {
+    final id = its.isNotEmpty ? its : fallbackIts.trim();
+    final name = itsName.isNotEmpty ? itsName : fallbackName.trim();
+    if (id.isEmpty && name.isEmpty) return '';
+    if (id.isNotEmpty && name.isNotEmpty) return 'ITS: $id · $name';
+    if (id.isNotEmpty) return 'ITS: $id';
+    return name;
+  }
+
+  String resolvedIts({String fallbackIts = ''}) {
+    return its.isNotEmpty ? its : fallbackIts.trim();
+  }
+
+  String resolvedName({String fallbackIts = '', String fallbackName = ''}) {
+    if (itsName.isNotEmpty) return itsName;
+    final id = resolvedIts(fallbackIts: fallbackIts);
+    if (id.isNotEmpty && id == fallbackIts.trim()) return fallbackName.trim();
+    return '';
+  }
+}
+
 class IzanPassItem {
   const IzanPassItem({
     required this.majlisId,
@@ -282,6 +322,7 @@ class IzanPassItem {
     this.shortDate = '',
     this.its = '',
     this.itsName = '',
+    this.registrants = const [],
   });
 
   final String majlisId;
@@ -291,8 +332,24 @@ class IzanPassItem {
   final String shortDate;
   final String its;
   final String itsName;
+  final List<IzanPassPerson> registrants;
 
   factory IzanPassItem.fromJson(Map<String, dynamic> json) {
+    final registrants = <IzanPassPerson>[];
+    final rawPeople = json['registrants'];
+    if (rawPeople is List) {
+      final seen = <String>{};
+      for (final item in rawPeople) {
+        final map = _asStringKeyedMap(item);
+        if (map == null) continue;
+        final person = IzanPassPerson.fromJson(map);
+        if (person.its.isEmpty) continue;
+        if (seen.contains(person.its)) continue;
+        seen.add(person.its);
+        registrants.add(person);
+      }
+    }
+
     return IzanPassItem(
       majlisId: '${json['majlis_id'] ?? json['id'] ?? ''}'.trim(),
       title: '${json['title'] ?? json['majlis_title'] ?? ''}'.trim(),
@@ -301,6 +358,7 @@ class IzanPassItem {
       shortDate: '${json['majlis_date'] ?? ''}'.trim(),
       its: '${json['its'] ?? json['ejamaat_id'] ?? ''}'.trim(),
       itsName: '${json['its_name'] ?? json['name'] ?? ''}'.trim(),
+      registrants: registrants,
     );
   }
 
@@ -324,12 +382,48 @@ class IzanPassItem {
   }
 
   String personLine({String fallbackIts = '', String fallbackName = ''}) {
+    final people = displayPeople(
+      fallbackIts: fallbackIts,
+      fallbackName: fallbackName,
+    );
+    if (people.isEmpty) return '';
+    return people.first.line(
+      fallbackIts: fallbackIts,
+      fallbackName: fallbackName,
+    );
+  }
+
+  List<IzanPassPerson> displayPeople({
+    String fallbackIts = '',
+    String fallbackName = '',
+  }) {
+    if (registrants.isNotEmpty) return registrants;
     final id = its.isNotEmpty ? its : fallbackIts.trim();
     final name = itsName.isNotEmpty ? itsName : fallbackName.trim();
-    if (id.isEmpty && name.isEmpty) return '';
-    if (name.isEmpty) return id;
-    if (id.isEmpty) return name;
-    return '$id: $name';
+    if (id.isEmpty && name.isEmpty) return const [];
+    return [
+      IzanPassPerson(its: id, itsName: name),
+    ];
+  }
+
+  List<IzanPassPerson> memberPeople({
+    String fallbackIts = '',
+    String fallbackName = '',
+  }) {
+    return displayPeople(
+      fallbackIts: fallbackIts,
+      fallbackName: fallbackName,
+    ).where((person) => !person.isGuest).toList();
+  }
+
+  List<IzanPassPerson> guestPeople({
+    String fallbackIts = '',
+    String fallbackName = '',
+  }) {
+    return displayPeople(
+      fallbackIts: fallbackIts,
+      fallbackName: fallbackName,
+    ).where((person) => person.isGuest).toList();
   }
 }
 

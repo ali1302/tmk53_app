@@ -68,8 +68,18 @@ class AppConfig {
   static const String androidApplicationId = 'com.tmkkuwait.tmk_kuwait';
   static const String iosBundleId = 'com.tmkkuwait.tmkKuwait';
 
-  /// Android notification channel used by PHP Expo sender (`channelId: TMK53`).
-  static const String pushAndroidChannelId = 'TMK53';
+  /// Logo shown on login screen (crest + Anjuman text).
+  static const String loginLogoAsset = 'assets/images/tmk_logo.png';
+
+  /// Square app icon source (transparent background + gold crest).
+  static const String appIconAsset = 'assets/images/app_icon_transparent.png';
+
+  /// Default Play Store listing (override in admin Mobile Setting if needed).
+  static const String androidStoreUrl =
+      'https://play.google.com/store/apps/details?id=$androidApplicationId';
+
+  /// Set in admin Mobile Setting when the iOS app is published.
+  static const String iosStoreUrl = '';
 
   /// Expo / EAS project UUID (Project settings → General → Project ID).
   /// Required to convert FCM tokens into ExponentPushToken for the live PHP sender.

@@ -7,6 +7,7 @@ import 'core/config/app_config.dart';
 import 'core/services/push_navigation_controller.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/theme/theme_provider.dart';
+import 'core/widgets/app_update_listener.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/broadcast/providers/broadcast_provider.dart';
@@ -49,6 +50,9 @@ class TmkApp extends StatelessWidget {
             title: AppConfig.appName,
             debugShowCheckedModeBanner: false,
             theme: theme.themeData,
+            builder: (context, child) {
+              return AppUpdateListener(child: child ?? const SizedBox.shrink());
+            },
             home: const _RootGate(),
           );
         },

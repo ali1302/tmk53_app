@@ -3,7 +3,7 @@
     "short_name": "tmk_kuwait",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#3D1035",
+    "background_color": "#F5EFD8",
     "theme_color": "#3D1035",
     "description": "A new Flutter project.",
     "orientation": "portrait-primary",

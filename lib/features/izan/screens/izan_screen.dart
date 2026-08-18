@@ -179,17 +179,20 @@ class _IzanScreenState extends State<IzanScreen> {
       if (match.isNotEmpty) openCard = match.first;
     }
 
+    final displayTitle =
+        widget.title.trim().isEmpty ? 'Izan' : widget.title.trim();
+
     return ColoredBox(
       color: const Color(0xFFF6EDE3),
       child: Column(
         children: [
-          if (openCard != null)
-            _Header(
-              title: _heading,
-              onBack: () => setState(() => _openMajlisId = null),
-            )
-          else
-            SizedBox(height: MediaQuery.of(context).padding.top),
+          _Header(
+            title: openCard != null ? _heading : displayTitle,
+            onBack: openCard != null
+                ? () => setState(() => _openMajlisId = null)
+                : widget.onBack,
+            leadingLabel: openCard != null ? displayTitle : null,
+          ),
           Expanded(
             child: auth.isDesignPreview
                 ? const Center(child: Text('Design preview — login for live RSVP.'))
@@ -723,13 +726,24 @@ class _SendButton extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.title, required this.onBack});
+  const _Header({
+    required this.title,
+    required this.onBack,
+    this.leadingLabel,
+  });
 
   final String title;
   final VoidCallback onBack;
+  final String? leadingLabel;
 
   @override
   Widget build(BuildContext context) {
+    final titleStyle = const TextStyle(
+      color: AppColors.accent,
+      fontSize: 16,
+      fontWeight: FontWeight.w700,
+    );
+
     return Container(
       color: AppColors.primary,
       padding: EdgeInsets.only(
@@ -744,29 +758,27 @@ class _Header extends StatelessWidget {
             onPressed: onBack,
             icon: const Icon(Icons.chevron_left, color: AppColors.accent, size: 28),
           ),
-          const Text(
-            'Home',
-            style: TextStyle(
-              color: AppColors.accent,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              title,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.accent,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
+          if (leadingLabel != null) ...[
+            Text(leadingLabel!, style: titleStyle.copyWith(fontSize: 14)),
+            Expanded(
+              child: Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: titleStyle.copyWith(fontSize: 15),
               ),
             ),
-          ),
-          const SizedBox(width: 64),
+            const SizedBox(width: 64),
+          ] else
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: titleStyle,
+              ),
+            ),
         ],
       ),
     );

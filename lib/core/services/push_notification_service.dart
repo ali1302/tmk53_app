@@ -129,8 +129,6 @@ class PushNotificationService {
     if (!_initialized) await initialize();
     if (!_firebaseReady || !isSupported) return;
 
-    await ensureNotificationPermissions();
-
     final deviceToken = await _fetchFcmTokenWithRetry();
     if (deviceToken == null || deviceToken.isEmpty) {
       debugPrint('[Push] FCM token is null or empty.');
@@ -140,14 +138,37 @@ class PushNotificationService {
     await _registerResolvedToken(itsId: cleaned, deviceToken: deviceToken);
   }
 
-  Future<String?> _fetchFcmTokenWithRetry({int maxAttempts = 3}) async {
+  Future<String?> _fetchFcmTokenWithRetry({int maxAttempts = 8}) async {
     final messaging = FirebaseMessaging.instance;
+
+    // iOS: FCM token is invalid until APNs has registered. Simulator never gets APNs.
+    if (!kIsWeb && Platform.isIOS) {
+      String? apns;
+      for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+        apns = await messaging.getAPNSToken();
+        if (apns != null && apns.isNotEmpty) {
+          debugPrint('[Push] APNs token ready');
+          break;
+        }
+        debugPrint('[Push] Waiting for APNs token (attempt $attempt/$maxAttempts)');
+        await Future<void>.delayed(Duration(seconds: attempt));
+      }
+      if (apns == null || apns.isEmpty) {
+        debugPrint(
+          '[Push] No APNs token. Use a real iPhone (not Simulator), '
+          'enable Push Notifications, and upload an APNs key in Firebase.',
+        );
+        return null;
+      }
+    }
+
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         return await messaging.getToken();
       } on FirebaseException catch (e) {
         final message = (e.message ?? '').toLowerCase();
-        final isServiceUnavailable = message.contains('service_not_available');
+        final isServiceUnavailable = message.contains('service_not_available') ||
+            message.contains('apns-token-not-set');
         if (!isServiceUnavailable || attempt == maxAttempts) return null;
         await Future<void>.delayed(Duration(seconds: attempt * 2));
       } catch (_) {

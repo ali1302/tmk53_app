@@ -314,6 +314,23 @@ class ScanRepository {
     return 0;
   }
 
+  Future<int> getMajlisRegisteredCount({
+    required String token,
+    required String majlisId,
+  }) async {
+    try {
+      final response = await _api.get(
+        'Scan/get_majlis_registration_list/$majlisId',
+        token: token,
+      );
+      if (response is Map<String, dynamic>) {
+        final data = response['data'];
+        if (data is List) return data.length;
+      }
+    } catch (_) {}
+    return 0;
+  }
+
   Future<ScanCounts> getAsbaqCounts({
     required String token,
     required String asbaqId,

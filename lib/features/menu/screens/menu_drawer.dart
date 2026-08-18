@@ -38,7 +38,11 @@ class MenuDrawer extends StatelessWidget {
         ? home!.user.ejamaatId
         : (auth.itsId ?? '—');
     final sabeel = home?.user.sabeelNo.trim() ?? '';
-    final itsLine = sabeel.isNotEmpty ? 'ITS: $its  ·  Sabeel: $sabeel' : 'ITS: $its';
+    final subtitleStyle = TextStyle(
+      color: AppColors.accent,
+      fontSize: 13,
+      fontWeight: FontWeight.w700,
+    );
 
     return Material(
       color: Colors.white,
@@ -65,14 +69,11 @@ class MenuDrawer extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          itsLine,
-                          style: TextStyle(
-                            color: AppColors.accent,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                        Text('ITS: $its', style: subtitleStyle),
+                        if (sabeel.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text('Sabeel: $sabeel', style: subtitleStyle),
+                        ],
                       ],
                     ),
                   ),

@@ -51,6 +51,10 @@ class ScanProvider extends ChangeNotifier {
     try {
       if (event.category == 'Majlis') {
         counts = await _repository.getMajlisCounts(token: token, majlisId: event.id);
+        eligibleCount = await _repository.getMajlisRegisteredCount(
+          token: token,
+          majlisId: event.id,
+        );
         scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
       } else if (event.category == 'Sabaq') {
         eligibleCount = await _repository.getSabaqEligibleCount(
@@ -122,6 +126,10 @@ class ScanProvider extends ChangeNotifier {
           its: its,
         );
         counts = await _repository.getMajlisCounts(token: token, majlisId: event.id);
+        eligibleCount = await _repository.getMajlisRegisteredCount(
+          token: token,
+          majlisId: event.id,
+        );
         refreshed = await _repository.getScannedUsersByUser(token: token, event: event);
       }
 

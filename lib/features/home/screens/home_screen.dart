@@ -455,11 +455,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       if (details != null && details.izanPasses.isNotEmpty)
                         ...details.izanPasses.map((pass) {
-                          final person = pass.personLine(
-                            fallbackIts: details.itsId.isNotEmpty
-                                ? details.itsId
-                                : details.user.ejamaatId,
-                            fallbackName: details.user.itsName,
+                          final fallbackIts = details.itsId.isNotEmpty
+                              ? details.itsId
+                              : details.user.ejamaatId;
+                          final fallbackName = details.user.itsName;
+                          final members = pass.memberPeople(
+                            fallbackIts: fallbackIts,
+                            fallbackName: fallbackName,
+                          );
+                          final guests = pass.guestPeople(
+                            fallbackIts: fallbackIts,
+                            fallbackName: fallbackName,
                           );
                           return _DashboardCard(
                             icon: Icons.confirmation_number_outlined,
@@ -471,21 +477,41 @@ class _HomeScreenState extends State<HomeScreen> {
                                   pass.title.isNotEmpty ? pass.title : 'Event',
                                   style: _CardStyle.primary,
                                 ),
-                                if (pass.displayDate.isNotEmpty || person.isNotEmpty) ...[
+                                if (pass.displayDate.isNotEmpty) ...[
                                   const SizedBox(height: 8),
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      if (pass.displayDate.isNotEmpty) ...[
-                                        Text(pass.displayDate, style: _CardStyle.secondary),
-                                        const SizedBox(width: 12),
-                                      ],
-                                      if (person.isNotEmpty)
-                                        Expanded(
-                                          child: Text(person, style: _CardStyle.secondary),
-                                        ),
-                                    ],
+                                  Text(pass.displayDate, style: _CardStyle.secondary),
+                                ],
+                                if (members.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  const _IzanPassSectionTitle(
+                                    label: 'User Pass',
                                   ),
+                                  const SizedBox(height: 6),
+                                  for (final person in members) ...[
+                                    _IzanPassPersonDetails(
+                                      person: person,
+                                      fallbackIts: fallbackIts,
+                                      fallbackName: fallbackName,
+                                    ),
+                                    if (person != members.last)
+                                      const SizedBox(height: 8),
+                                  ],
+                                ],
+                                if (guests.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  const _IzanPassSectionTitle(
+                                    label: 'Guest User Pass',
+                                  ),
+                                  const SizedBox(height: 6),
+                                  for (final person in guests) ...[
+                                    _IzanPassPersonDetails(
+                                      person: person,
+                                      fallbackIts: fallbackIts,
+                                      fallbackName: fallbackName,
+                                    ),
+                                    if (person != guests.last)
+                                      const SizedBox(height: 8),
+                                  ],
                                 ],
                               ],
                             ),
@@ -706,6 +732,58 @@ class _NotifyBlock extends StatelessWidget {
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _IzanPassSectionTitle extends StatelessWidget {
+  const _IzanPassSectionTitle({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: AppColors.primary,
+      ),
+    );
+  }
+}
+
+class _IzanPassPersonDetails extends StatelessWidget {
+  const _IzanPassPersonDetails({
+    required this.person,
+    required this.fallbackIts,
+    required this.fallbackName,
+  });
+
+  final IzanPassPerson person;
+  final String fallbackIts;
+  final String fallbackName;
+
+  @override
+  Widget build(BuildContext context) {
+    final its = person.resolvedIts(fallbackIts: fallbackIts);
+    final name = person.resolvedName(
+      fallbackIts: fallbackIts,
+      fallbackName: fallbackName,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (its.isNotEmpty)
+          Text('ITS: $its', style: _CardStyle.secondary),
+        if (name.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(top: its.isNotEmpty ? 2 : 0),
+            child: Text(name, style: _CardStyle.secondary),
+          ),
       ],
     );
   }

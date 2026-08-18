@@ -348,10 +348,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              widget.event.category == 'Sabaq' ||
-                                      widget.event.category == 'Asbaq'
-                                  ? 'Asbaq Users: ${provider.eligibleCount}'
-                                  : 'Event: ${widget.event.category}',
+                              _scanOverviewLabel(widget.event, provider),
                               style: const TextStyle(fontSize: 14, color: Color(0xFF4B5563)),
                             ),
                           ),
@@ -803,6 +800,19 @@ class _QrFramePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+String _scanOverviewLabel(ScanEvent event, ScanProvider provider) {
+  switch (event.category) {
+    case 'Sabaq':
+      return 'Sabaq Users: ${provider.eligibleCount}';
+    case 'Asbaq':
+      return 'Asbaq Users: ${provider.eligibleCount}';
+    case 'Majlis':
+      return 'Event Users: ${provider.eligibleCount}';
+    default:
+      return 'Event: ${event.category}';
+  }
 }
 
 class _Card extends StatelessWidget {
