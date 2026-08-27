@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -7,7 +8,7 @@ plugins {
 val googleServicesFile = file("google-services.json")
 
 android {
-    namespace = "com.tmkkuwait.tmk53"
+    namespace = "com.tmkkuwait.tmk_kuwait"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -18,7 +19,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.tmkkuwait.tmk53"
+        applicationId = "com.tmkkuwait.tmk_kuwait"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = maxOf(flutter.minSdkVersion, 23)

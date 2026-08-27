@@ -1,7 +1,7 @@
 name: tmk_kuwait
 description: TMK 53 Flutter mobile app
 publish_to: 'none'
-version: 1.5.9+5
+version: 1.6.1+7
 
 environment:
   sdk: ^3.9.2
@@ -42,6 +42,7 @@ flutter:
   assets:
     - assets/images/tmk_logo.png
     - assets/images/tmk_crest.png
+    - assets/images/anjuman_logo.png
     - assets/images/app_icon.png
     - assets/images/app_icon_foreground.png
     - assets/images/app_icon_branded.png
@@ -49,25 +50,26 @@ flutter:
     - assets/images/app_icon_foreground_branded.png
     - assets/images/app_icon_adaptive_fg.png
     - assets/images/kaaba_3d.png
+    - assets/logo/anjuman_logo.png
     - assets/sounds/scan_success.wav
 
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/images/app_icon_transparent.png
+  image_path: assets/logo/anjuman_logo.png
   remove_alpha_ios: true
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: assets/images/app_icon_adaptive_fg.png
+  adaptive_icon_foreground: assets/logo/anjuman_logo.png
   adaptive_icon_foreground_inset: 16
   web:
     generate: true
-    image_path: assets/images/app_icon_transparent.png
+    image_path: assets/logo/anjuman_logo.png
     background_color: "#F5EFD8"
     theme_color: "#3D1035"
   windows:
     generate: true
-    image_path: assets/images/app_icon_transparent.png
+    image_path: assets/logo/anjuman_logo.png
     icon_size: 256
   macos:
     generate: true
-    image_path: assets/images/app_icon_transparent.png
+    image_path: assets/logo/anjuman_logo.png

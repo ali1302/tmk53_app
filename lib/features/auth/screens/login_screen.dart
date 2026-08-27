@@ -125,14 +125,18 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  /// Logo scales with screen width; keeps full crest + text readable.
+  /// Logo scales with screen dimensions; keeps full crest + text clear and prominent.
   double _logoWidth(BoxConstraints constraints) {
     final maxW = constraints.maxWidth;
-    if (!maxW.isFinite || maxW <= 0) return 280;
-    return maxW.clamp(240.0, 360.0);
+    final maxH = constraints.maxHeight;
+    if (!maxW.isFinite || maxW <= 0) return 320;
+    final widthLimit = maxW - 40;
+    final heightLimit = maxH.isFinite ? (maxH - 140) * 0.75 : 360.0;
+    final idealSize = math.min(widthLimit, heightLimit);
+    return idealSize.clamp(260.0, 360.0);
   }
 
-  static const double _logoAspect = 250 / 89;
+  static const double _logoAspect = 1.0;
 
   @override
   Widget build(BuildContext context) {

@@ -1,4 +1,4 @@
-﻿package com.tmkkuwait.tmk53
+﻿package com.tmkkuwait.tmk_kuwait
 
 import io.flutter.embedding.android.FlutterActivity
 

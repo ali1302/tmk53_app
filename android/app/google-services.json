@@ -1,21 +1,41 @@
 {
   "project_info": {
-    "project_number": "502998534784",
-    "project_id": "tmk-53-a6840",
-    "storage_bucket": "tmk-53-a6840.firebasestorage.app"
+    "project_number": "56471954569",
+    "firebase_url": "https://taherijamaat5253.firebaseio.com",
+    "project_id": "taherijamaat5253",
+    "storage_bucket": "taherijamaat5253.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:502998534784:android:8d05f82f868188db4f7465",
+        "mobilesdk_app_id": "1:56471954569:android:be755fcee3d1f242751258",
         "android_client_info": {
-          "package_name": "com.tmkkuwait.tmk53"
+          "package_name": "com.taherijamaat.tmk53"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDT2OumTEOt43tsbn6w-tD2kW401pyS0Z8"
+          "current_key": "AIzaSyARwdcLHmo1e5-HdqZDUHIh5jbgp8DuNHQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:56471954569:android:3184c6de242d3c70751258",
+        "android_client_info": {
+          "package_name": "com.tmkkuwait.tmk_kuwait"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyARwdcLHmo1e5-HdqZDUHIh5jbgp8DuNHQ"
         }
       ],
       "services": {
