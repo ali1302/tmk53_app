@@ -65,8 +65,8 @@ class AppConfig {
       '$legacyApiBaseUrl/login?redirect_url=${Uri.encodeComponent(authCallbackUrl)}';
 
   /// Must match Android `applicationId` / iOS bundle id used with Firebase + Expo.
-  static const String androidApplicationId = 'com.tmkkuwait.tmk_kuwait';
-  static const String iosBundleId = 'com.tmkkuwait.tmkKuwait';
+  static const String androidApplicationId = 'com.tmkkuwait.tmk53';
+  static const String iosBundleId = 'com.tmkkuwait.tmk53';
 
   /// Logo shown on login screen (crest + Anjuman text).
   static const String loginLogoAsset = 'assets/images/tmk_logo.png';
