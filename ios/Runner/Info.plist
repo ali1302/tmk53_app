@@ -40,9 +40,11 @@
 	<key>NSCameraUsageDescription</key>
 	<string>TMK 53 needs camera access to scan ITS QR codes during event check-in.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TMK 53 uses your location to show where you are logged in from.</string>
+	<string>TMK 53 uses your location while the app is open to show your current area and calculate accurate local prayer and sun times. For example, your current city is used to display today’s sunrise and sunset times.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>TMK 53 uses your location to show where you are logged in from.</string>
+	<string>TMK 53 uses your location to show your current area and calculate accurate local prayer and sun times. For example, your current city is used to display today’s sunrise and sunset times.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>TMK 53 uses your location to calculate accurate local prayer and sun times based on your current city.</string>
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<true/>
 	<key>UIBackgroundModes</key>

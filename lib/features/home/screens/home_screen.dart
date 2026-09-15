@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -188,10 +189,17 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     final lat = prefs.getDouble(_latCacheKey);
     final lon = prefs.getDouble(_lonCacheKey);
+    final useAppleMaps = defaultTargetPlatform == TargetPlatform.iOS;
     final uri = (lat != null && lon != null)
-        ? Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lon')
+        ? Uri.parse(
+            useAppleMaps
+                ? 'https://maps.apple.com/?ll=$lat,$lon&q=Current%20Location'
+                : 'https://www.google.com/maps/search/?api=1&query=$lat,$lon',
+          )
         : Uri.parse(
-            'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(_geoLocation)}',
+            useAppleMaps
+                ? 'https://maps.apple.com/?q=${Uri.encodeComponent(_geoLocation)}'
+                : 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(_geoLocation)}',
           );
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }

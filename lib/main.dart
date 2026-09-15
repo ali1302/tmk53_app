@@ -19,6 +19,9 @@ import 'features/izan/providers/izan_provider.dart';
 import 'features/scan/providers/scan_provider.dart';
 import 'features/shell/app_shell.dart';
 
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   // Match FMB: never block first frame on Firebase/FCM.
@@ -47,6 +50,7 @@ class TmkApp extends StatelessWidget {
       child: Consumer<ThemeProvider>(
         builder: (context, theme, _) {
           return MaterialApp(
+            scaffoldMessengerKey: rootScaffoldMessengerKey,
             title: AppConfig.appName,
             debugShowCheckedModeBanner: false,
             theme: theme.themeData,
