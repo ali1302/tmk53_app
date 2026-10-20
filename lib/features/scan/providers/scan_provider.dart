@@ -213,7 +213,7 @@ class ScanProvider extends ChangeNotifier {
         its: its,
       );
 
-      // Only update UI after server confirms, then re-sync from server.
+      // Only update UI after server confirms.
       if (event.category == 'Majlis') {
         counts = await _repository.getMajlisCounts(token: token, majlisId: event.id);
         scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
@@ -225,6 +225,7 @@ class ScanProvider extends ChangeNotifier {
         counts = await _repository.getAsbaqCounts(token: token, asbaqId: event.id);
         scannedUsers = await _repository.getScannedUsersByUser(token: token, event: event);
       } else {
+        // Sabaq / General — drop locally after confirmed server remove.
         scannedUsers = previous.where((u) => u.its != its).toList();
       }
 

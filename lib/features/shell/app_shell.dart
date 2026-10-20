@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../auth/providers/auth_provider.dart';
 import '../broadcast/screens/broadcast_screen.dart';
+import '../maintenance/screens/maintenance_screen.dart';
 import '../calendar/screens/calendar_screen.dart';
 import '../committee/screens/committee_screen.dart';
 import '../contact_us/screens/contact_us_screen.dart';
@@ -20,7 +21,7 @@ import '../../core/services/push_navigation_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 
-enum AppTab { menu, broadcast, izan, scan }
+enum AppTab { menu, broadcast, maintenance, izan, scan }
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -117,6 +118,59 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  bool get _isOnHomePage =>
+      _activeTab == AppTab.menu &&
+      !_menuOpen &&
+      !_calendarOpen &&
+      !_duesOpen &&
+      !_historyScanOpen &&
+      !_committeeOpen &&
+      !_contactUsOpen &&
+      !_showQr &&
+      !_qiblaOpen;
+
+  /// Android back: close overlays → return to Home → exit only from Home.
+  void _handleSystemBack() {
+    if (_qiblaOpen) {
+      setState(() => _qiblaOpen = false);
+      return;
+    }
+    if (_showQr) {
+      setState(() => _showQr = false);
+      return;
+    }
+    if (_contactUsOpen) {
+      setState(() => _contactUsOpen = false);
+      return;
+    }
+    if (_committeeOpen) {
+      setState(() => _committeeOpen = false);
+      return;
+    }
+    if (_historyScanOpen) {
+      setState(() => _historyScanOpen = false);
+      return;
+    }
+    if (_duesOpen) {
+      setState(() => _duesOpen = false);
+      return;
+    }
+    if (_calendarOpen) {
+      setState(() => _calendarOpen = false);
+      return;
+    }
+    if (_menuOpen) {
+      setState(() => _menuOpen = false);
+      return;
+    }
+    if (_activeTab != AppTab.menu) {
+      setState(() {
+        _activeTab = AppTab.menu;
+        _menuOpen = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     context.watch<ThemeProvider>();
@@ -137,110 +191,117 @@ class _AppShellState extends State<AppShell> {
       });
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        top: false,
-        bottom: false,
-        child: Stack(
-          children: [
-            Column(
-              children: [
-                Expanded(child: _buildBody(canScan, izanLabel, auth.izanHeading)),
-                _BottomNav(
-                  activeTab: _activeTab,
-                  onSelect: _selectTab,
-                  showScan: canScan,
-                  izanLabel: izanLabel,
-                  showIzanBadge: showIzanBadge,
-                ),
-              ],
-            ),
-            if (_menuOpen)
-              Positioned.fill(
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: MediaQuery.of(context).size.width * 0.75,
-                      child: MenuDrawer(
-                        onCalendar: () {
-                          setState(() {
-                            _menuOpen = false;
-                            _calendarOpen = true;
-                          });
-                        },
-                        onDues: () {
-                          setState(() {
-                            _menuOpen = false;
-                            _duesOpen = true;
-                          });
-                        },
-                        onSelfScan: () {
-                          setState(() {
-                            _menuOpen = false;
-                            _historyScanOpen = true;
-                          });
-                        },
-                        onCommittee: () {
-                          setState(() {
-                            _menuOpen = false;
-                            _committeeOpen = true;
-                          });
-                        },
-                        onCloseMenu: () => setState(() => _menuOpen = false),
+    return PopScope(
+      canPop: _isOnHomePage,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _handleSystemBack();
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          top: false,
+          bottom: false,
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  Expanded(child: _buildBody(canScan, izanLabel, auth.izanHeading)),
+                  _BottomNav(
+                    activeTab: _activeTab,
+                    onSelect: _selectTab,
+                    showScan: canScan,
+                    izanLabel: izanLabel,
+                    showIzanBadge: showIzanBadge,
+                  ),
+                ],
+              ),
+              if (_menuOpen)
+                Positioned.fill(
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: MediaQuery.of(context).size.width * 0.75,
+                        child: MenuDrawer(
+                          onCalendar: () {
+                            setState(() {
+                              _menuOpen = false;
+                              _calendarOpen = true;
+                            });
+                          },
+                          onDues: () {
+                            setState(() {
+                              _menuOpen = false;
+                              _duesOpen = true;
+                            });
+                          },
+                          onSelfScan: () {
+                            setState(() {
+                              _menuOpen = false;
+                              _historyScanOpen = true;
+                            });
+                          },
+                          onCommittee: () {
+                            setState(() {
+                              _menuOpen = false;
+                              _committeeOpen = true;
+                            });
+                          },
+                          onCloseMenu: () => setState(() => _menuOpen = false),
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _menuOpen = false),
-                        child: Container(color: Colors.black.withValues(alpha: 0.45)),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _menuOpen = false),
+                          child: Container(color: Colors.black.withValues(alpha: 0.45)),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            if (_calendarOpen)
-              Positioned.fill(
-                child: CalendarScreen(
-                  onClose: () => setState(() => _calendarOpen = false),
+              if (_calendarOpen)
+                Positioned.fill(
+                  child: CalendarScreen(
+                    onClose: () => setState(() => _calendarOpen = false),
+                  ),
                 ),
-              ),
-            if (_duesOpen)
-              Positioned.fill(
-                child: DuesScreen(
-                  onClose: () => setState(() => _duesOpen = false),
+              if (_duesOpen)
+                Positioned.fill(
+                  child: DuesScreen(
+                    onClose: () => setState(() => _duesOpen = false),
+                  ),
                 ),
-              ),
-            if (_historyScanOpen)
-              Positioned.fill(
-                child: HistoryScanScreen(
-                  onClose: () => setState(() => _historyScanOpen = false),
+              if (_historyScanOpen)
+                Positioned.fill(
+                  child: HistoryScanScreen(
+                    onClose: () => setState(() => _historyScanOpen = false),
+                  ),
                 ),
-              ),
-            if (_committeeOpen)
-              Positioned.fill(
-                child: CommitteeScreen(
-                  onClose: () => setState(() => _committeeOpen = false),
+              if (_committeeOpen)
+                Positioned.fill(
+                  child: CommitteeScreen(
+                    onClose: () => setState(() => _committeeOpen = false),
+                  ),
                 ),
-              ),
-            if (_contactUsOpen)
-              Positioned.fill(
-                child: ContactUsScreen(
-                  onClose: () => setState(() => _contactUsOpen = false),
+              if (_contactUsOpen)
+                Positioned.fill(
+                  child: ContactUsScreen(
+                    onClose: () => setState(() => _contactUsOpen = false),
+                  ),
                 ),
-              ),
-            if (_showQr)
-              Positioned.fill(
-                child: QrModal(onClose: () => setState(() => _showQr = false)),
-              ),
-            if (_qiblaOpen)
-              Positioned.fill(
-                child: QiblaScreen(
-                  locationLabel: _qiblaLocationLabel,
-                  onClose: () => setState(() => _qiblaOpen = false),
+              if (_showQr)
+                Positioned.fill(
+                  child: QrModal(onClose: () => setState(() => _showQr = false)),
                 ),
-              ),
-          ],
+              if (_qiblaOpen)
+                Positioned.fill(
+                  child: QiblaScreen(
+                    locationLabel: _qiblaLocationLabel,
+                    onClose: () => setState(() => _qiblaOpen = false),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -250,6 +311,13 @@ class _AppShellState extends State<AppShell> {
     switch (_activeTab) {
       case AppTab.broadcast:
         return BroadcastScreen(
+          onBack: () => setState(() {
+            _activeTab = AppTab.menu;
+            _menuOpen = false;
+          }),
+        );
+      case AppTab.maintenance:
+        return MaintenanceScreen(
           onBack: () => setState(() {
             _activeTab = AppTab.menu;
             _menuOpen = false;
@@ -331,6 +399,12 @@ class _BottomNav extends StatelessWidget {
             icon: Icons.podcasts,
             selected: activeTab == AppTab.broadcast,
             onTap: () => onSelect(AppTab.broadcast),
+          ),
+          _NavItem(
+            label: 'Maintenance',
+            icon: Icons.handyman_outlined,
+            selected: activeTab == AppTab.maintenance,
+            onTap: () => onSelect(AppTab.maintenance),
           ),
           _NavItem(
             label: izanLabel,

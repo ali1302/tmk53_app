@@ -276,6 +276,12 @@ class CommitteeRepository {
         'phone': '+96598808878',
         'color': '#d4b13d',
       },
+      {
+        'name': 'Murtuza Jamdar',
+        'post': 'Secretary - Toloba',
+        'phone': '+96565960568',
+        'color': '#76bee6',
+      },
     ];
 
     return [

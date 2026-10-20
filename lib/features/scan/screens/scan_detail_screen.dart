@@ -114,6 +114,11 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
     _scannerStarted = false;
   }
 
+  void _dismissKeyboard() {
+    _itsFocus.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   void _onItsChanged(String value) {
     final digits = value.replaceAll(RegExp(r'\D'), '');
     final clipped =
@@ -271,7 +276,10 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
           child: Row(
             children: [
               IconButton(
-                onPressed: widget.onBack,
+                onPressed: () {
+                  _dismissKeyboard();
+                  widget.onBack();
+                },
                 icon: const Icon(Icons.chevron_left, color: AppColors.accent, size: 28),
               ),
               const Text(
@@ -288,6 +296,7 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
         Expanded(
           child: ListView(
             padding: const EdgeInsets.all(12),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             children: [
               _Card(
                 child: Column(
@@ -455,7 +464,10 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                             TextField(
                               controller: _itsController,
                               focusNode: _itsFocus,
-                              keyboardType: TextInputType.number,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                decimal: false,
+                                signed: false,
+                              ),
                               textInputAction: TextInputAction.done,
                               maxLength: _itsLength,
                               inputFormatters: [
@@ -463,16 +475,30 @@ class _ScanDetailScreenState extends State<ScanDetailScreen> {
                                 LengthLimitingTextInputFormatter(_itsLength),
                               ],
                               onChanged: _onItsChanged,
-                              onSubmitted: (_) => _submit(),
-                              decoration: const InputDecoration(
+                              onTapOutside: (_) => _dismissKeyboard(),
+                              onEditingComplete: () {
+                                _dismissKeyboard();
+                                _submit();
+                              },
+                              decoration: InputDecoration(
                                 hintText: 'Enter 8-digit ITS',
                                 counterText: '',
                                 helperText: 'Auto-submits after 8 digits',
+                                suffixIcon: IconButton(
+                                  tooltip: 'Close keyboard',
+                                  onPressed: _dismissKeyboard,
+                                  icon: const Icon(Icons.keyboard_hide_outlined),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 12),
                             ElevatedButton.icon(
-                              onPressed: busy ? null : () => _submit(),
+                              onPressed: busy
+                                  ? null
+                                  : () {
+                                      _dismissKeyboard();
+                                      _submit();
+                                    },
                               icon: busy
                                   ? const SizedBox(
                                       width: 16,

@@ -491,23 +491,15 @@ class ScanRepository {
 
     final status = '${response['status'] ?? ''}'.toLowerCase();
     final message = response['message']?.toString() ?? '';
-    final code = '${response['code'] ?? ''}';
     final removed = status == 'removed' ||
-        message.toLowerCase().contains('removed') ||
-        (code == '200' &&
-            (event.category == 'Sabaq' || event.category == 'General'));
+        message.toLowerCase().contains('removed');
 
     if (!removed) {
-      if (event.category == 'Asbaq' || event.category == 'Majlis') {
-        throw ApiException(
-          statusCode: 409,
-          message:
-              'Server did not remove this ITS. Upload the latest Scan/Asbaq API files, then try again.',
-        );
-      }
       throw ApiException(
-        statusCode: 500,
-        message: message.isNotEmpty ? message : 'Unable to remove scan from server.',
+        statusCode: 409,
+        message: message.isNotEmpty
+            ? message
+            : 'Server did not remove this ITS. Please try again.',
       );
     }
 
