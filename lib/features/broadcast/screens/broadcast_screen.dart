@@ -44,6 +44,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                       onRefresh: () => provider.load(auth.itsId ?? ''),
                       child: provider.errorMessage != null && provider.items.isEmpty
                           ? ListView(
+                              padding: EdgeInsets.zero,
                               children: [
                                 Padding(
                                   padding: const EdgeInsets.all(24),
@@ -52,6 +53,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                               ],
                             )
                           : ListView.separated(
+                              padding: EdgeInsets.zero,
                               itemCount: provider.items.length,
                               separatorBuilder: (_, _) => Divider(
                                 height: 1,

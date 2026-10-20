@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../auth/providers/auth_provider.dart';
 import '../broadcast/screens/broadcast_screen.dart';
-import '../maintenance/screens/maintenance_screen.dart';
 import '../calendar/screens/calendar_screen.dart';
 import '../committee/screens/committee_screen.dart';
 import '../contact_us/screens/contact_us_screen.dart';
@@ -21,7 +20,7 @@ import '../../core/services/push_navigation_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_provider.dart';
 
-enum AppTab { menu, broadcast, maintenance, izan, scan }
+enum AppTab { menu, broadcast, izan, scan }
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -316,13 +315,6 @@ class _AppShellState extends State<AppShell> {
             _menuOpen = false;
           }),
         );
-      case AppTab.maintenance:
-        return MaintenanceScreen(
-          onBack: () => setState(() {
-            _activeTab = AppTab.menu;
-            _menuOpen = false;
-          }),
-        );
       case AppTab.izan:
         return IzanScreen(
           title: izanLabel,
@@ -399,12 +391,6 @@ class _BottomNav extends StatelessWidget {
             icon: Icons.podcasts,
             selected: activeTab == AppTab.broadcast,
             onTap: () => onSelect(AppTab.broadcast),
-          ),
-          _NavItem(
-            label: 'Maintenance',
-            icon: Icons.handyman_outlined,
-            selected: activeTab == AppTab.maintenance,
-            onTap: () => onSelect(AppTab.maintenance),
           ),
           _NavItem(
             label: izanLabel,
